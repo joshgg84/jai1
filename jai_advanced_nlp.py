@@ -1,20 +1,18 @@
 """JAI - Advanced NLP
 Dependency parsing and prepositional phrase understanding.
-Uses pre-downloaded spaCy model.
+Uses pre-downloaded spaCy model from requirements.txt.
 """
 
 import spacy
 import re
 
-# Load spaCy model
+# Load spaCy model (pre-downloaded via requirements.txt)
 try:
     nlp = spacy.load("en_core_web_sm")
     print("✅ Advanced NLP loaded")
 except OSError:
-    print("⚠️ spaCy model not found. Downloading...")
-    import subprocess
-    subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
-    nlp = spacy.load("en_core_web_sm")
+    print("⚠️ spaCy model not found. Advanced NLP disabled.")
+    nlp = None
 
 class JAIAdvancedNLP:
     """Advanced language understanding for JAI"""
@@ -41,6 +39,10 @@ class JAIAdvancedNLP:
     @staticmethod
     def parse_dependencies(text):
         """Parse sentence dependencies (who did what to whom)"""
+        if nlp is None:
+            return {"subjects": [], "verbs": [], "objects": [], "prepositions": [], 
+                    "has_subject": False, "has_verb": False, "has_object": False}
+        
         doc = nlp(text)
         
         subjects = []
@@ -80,6 +82,9 @@ class JAIAdvancedNLP:
     @staticmethod
     def resolve_coreference(text):
         """Resolve pronouns to their referents"""
+        if nlp is None:
+            return {"pronouns": [], "has_pronouns": False}
+        
         doc = nlp(text)
         pronouns = []
         
@@ -100,6 +105,10 @@ class JAIAdvancedNLP:
     @staticmethod
     def understand_prepositional_phrases(text):
         """Extract and understand prepositional phrases"""
+        if nlp is None:
+            return {"phrases": [], "location_phrases": [], "time_phrases": [], 
+                    "has_location": False, "has_time": False}
+        
         doc = nlp(text)
         phrases = []
         
