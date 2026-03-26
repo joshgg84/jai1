@@ -16,10 +16,17 @@ from gtts import gTTS
 
 # Import NLP modules
 from jai_nlp import JAINLP
-#from jai_advanced_nlp import JAIAdvancedNLP
 
 app = Flask(__name__)
 CORS(app)
+
+# Add CORS headers manually as backup
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type, X-Admin-Key')
+    response.headers.add('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+    return response
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -172,9 +179,8 @@ class JAI:
             return response
         
         # Step 2: Check for calculation
-        calc_match = re.search(r'[\d+\-*/%]', message)
         numbers = re.findall(r'\d+', message)
-        if calc_match and len(numbers) >= 2:
+        if len(numbers) >= 2:
             result = JAI.calculate(message)
             if result:
                 response = {"response": result, "type": "calculation", "source": "core"}
@@ -240,12 +246,7 @@ class JAI:
             return response
         
         # Step 7: Default — NLP analysis
-        analysis = {
-            "sentiment": JAINLP.analyze_sentence(message),
-            #"advanced": JAIAdvancedNLP.full_analysis(message),
-            "keywords": JAINLP.extract_keywords(message),
-            "intent": JAINLP.extract_intent(message)
-        }
+        analysis = JAINLP.analyze_sentence(message)
         
         response = {
             "response": None,
@@ -255,18 +256,24 @@ class JAI:
             "message": message
         }
         
-        # If client requested speech, generate for the analysis summary
-        if include_speech:
-            summary = f"I understand you're {analysis['sentiment']['sentiment']['emotion']} about something. What would you like to talk about?"
+        # If client requested speech, generate a simple response
+        if include_speech and analysis:
+            emotion = analysis['sentiment']['emotion'] if analysis else 'neutral'
+            summary = f"I understand you're {emotion}. What would you like to talk about?"
             response["audio"] = JAI.text_to_speech(summary)
         
         return response
 
 # ========== UNIFIED API ENDPOINT ==========
 
-@app.route('/api/chat', methods=['POST'])
+@app.route('/api/chat', methods=['POST', 'OPTIONS'])
+@app.route('/api/chat/', methods=['POST', 'OPTIONS'])
 def api_chat():
     """One endpoint for everything"""
+    # Handle OPTIONS preflight request
+    if request.method == 'OPTIONS':
+        return '', 200
+    
     data = request.json
     message = data.get('message', '').strip()
     client_id = data.get('clientId', 'unknown')
@@ -275,8 +282,82 @@ def api_chat():
     if not message:
         return jsonify({'error': 'Message required'}), 400
     
-    result = JAI.generate_response(message, client_id, options)
-    return jsonify(result)
+    try:
+        result = JAI.generate_response(message, client_id, options)
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error in api_chat: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+# ========== ADDITIONAL API ENDPOINTS ==========
+
+@app.route('/api/analyze', methods=['POST', 'OPTIONS'])
+def api_analyze():
+    """Analyze text using NLP"""
+    if request.method == 'OPTIONS':
+        return '', 200
+    
+    data = request.json
+    text = data.get('text', '').strip()
+    
+    if not text:
+        return jsonify({'error': 'Text required'}), 400
+    
+    analysis = JAINLP.analyze_sentence(text)
+    return jsonify(analysis)
+
+@app.route('/api/speak', methods=['POST', 'OPTIONS'])
+def api_speak():
+    """Text-to-speech"""
+    if request.method == 'OPTIONS':
+        return '', 200
+    
+    data = request.json
+    text = data.get('text', '').strip()
+    
+    if not text:
+        return jsonify({'error': 'Text required'}), 400
+    
+    audio = JAI.text_to_speech(text)
+    if audio:
+        return jsonify({'success': True, 'audio': audio})
+    return jsonify({'error': 'TTS failed'}), 500
+
+@app.route('/api/calculate', methods=['POST', 'OPTIONS'])
+def api_calculate():
+    """Direct calculation endpoint"""
+    if request.method == 'OPTIONS':
+        return '', 200
+    
+    data = request.json
+    expression = data.get('expression', '').strip()
+    
+    if not expression:
+        return jsonify({'error': 'Expression required'}), 400
+    
+    result = JAI.calculate(expression)
+    if result:
+        return jsonify({'result': result})
+    return jsonify({'error': 'Invalid expression'}), 400
+
+@app.route('/api/convert', methods=['POST', 'OPTIONS'])
+def api_convert():
+    """Direct currency conversion"""
+    if request.method == 'OPTIONS':
+        return '', 200
+    
+    data = request.json
+    amount = data.get('amount')
+    from_curr = data.get('from', '').upper()
+    to_curr = data.get('to', '').upper()
+    
+    if not amount or not from_curr or not to_curr:
+        return jsonify({'error': 'Amount, from, to required'}), 400
+    
+    result = JAI.currency_convert(float(amount), from_curr, to_curr)
+    if result:
+        return jsonify({'result': result})
+    return jsonify({'error': 'Currency not supported'}), 400
 
 # ========== ADMIN ENDPOINTS ==========
 
@@ -354,9 +435,18 @@ def health():
         'status': 'healthy',
         'name': 'JAI1 - Intelligence Service',
         'creator': 'Joshua Giwa',
-        'version': '3.0',
+        'version': '3.1',
         'features': ['chat', 'calculate', 'currency', 'teaching', 'tts', 'nlp']
     })
+
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({'error': 'Endpoint not found'}), 404
+
+@app.errorhandler(500)
+def server_error(e):
+    logger.error(f"Server error: {e}")
+    return jsonify({'error': 'Internal server error'}), 500
 
 # ========== INITIALIZATION ==========
 
