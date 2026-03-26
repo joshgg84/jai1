@@ -1,6 +1,6 @@
 """JAI1 - Pure Intelligence Service
-Unified API: One endpoint for all intelligence.
-Clients just send messages, JAI1 returns intelligent responses.
+Simplified: Only /api/chat and /health endpoints.
+Everything else is handled by the main endpoint.
 """
 
 import os
@@ -9,23 +9,24 @@ import logging
 import base64
 import io
 import re
+import random
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from datetime import datetime
 from gtts import gTTS
 
-# Import NLP modules
+# Import JAI's personality (it imports everything else)
+from jai_responses import JAIPersonality
 from jai_nlp import JAINLP
 
 app = Flask(__name__)
 CORS(app)
 
-# Add CORS headers manually as backup
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type, X-Admin-Key')
-    response.headers.add('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+    response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
     return response
 
 logging.basicConfig(level=logging.INFO)
@@ -50,7 +51,6 @@ def setup_database():
     conn = get_db()
     cur = conn.cursor()
     
-    # Taught responses (Q&A)
     cur.execute('''
         CREATE TABLE IF NOT EXISTS taught (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,7 +62,6 @@ def setup_database():
         )
     ''')
     
-    # Teaching suggestions
     cur.execute('''
         CREATE TABLE IF NOT EXISTS suggestions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,7 +83,6 @@ class JAI:
     
     @staticmethod
     def calculate(expr):
-        """Safe calculator"""
         try:
             expr = re.sub(r"[^0-9+\-*/%.() ]", "", expr)
             result = eval(expr)
@@ -94,7 +92,6 @@ class JAI:
     
     @staticmethod
     def currency_convert(amount, from_curr, to_curr):
-        """Currency conversion"""
         rates = {"USD": 1500, "EUR": 1600, "GBP": 1900, "NGN": 1}
         from_curr = from_curr.upper()
         to_curr = to_curr.upper()
@@ -106,7 +103,6 @@ class JAI:
     
     @staticmethod
     def get_taught_response(client_id, trigger):
-        """Check if this trigger has been taught"""
         try:
             conn = get_db()
             cur = conn.cursor()
@@ -132,7 +128,6 @@ class JAI:
     
     @staticmethod
     def save_suggestion(client_id, trigger, response):
-        """Save a teaching suggestion"""
         try:
             conn = get_db()
             cur = conn.cursor()
@@ -149,7 +144,6 @@ class JAI:
     
     @staticmethod
     def text_to_speech(text):
-        """Convert text to speech audio"""
         try:
             tts = gTTS(text=text, lang='en', slow=False)
             audio_buffer = io.BytesIO()
@@ -245,32 +239,45 @@ class JAI:
                 response["audio"] = JAI.text_to_speech(result)
             return response
         
-        # Step 7: Default — NLP analysis
-        analysis = JAINLP.analyze_sentence(message)
+        # Step 7: Use JAIPersonality for all conversation
+        try:
+            personality_response = JAIPersonality.get_response(message, "", "No lesson")
+            logger.info(f"JAIPersonality returned: {personality_response[:100] if personality_response else 'None'}")
+        except Exception as e:
+            logger.error(f"JAIPersonality error: {e}")
+            personality_response = None
         
+        if personality_response:
+            response = {
+                "response": personality_response,
+                "type": "personality",
+                "source": "jai_responses"
+            }
+            if include_speech:
+                response["audio"] = JAI.text_to_speech(personality_response)
+            return response
+        
+        # Step 8: Fallback if JAIPersonality fails
+        logger.warning("JAIPersonality returned None, using fallback")
+        fallback_responses = [
+            "I'm here. What's on your mind?",
+            "Tell me what's going on.",
+            "What would you like to talk about?"
+        ]
+        result = random.choice(fallback_responses)
         response = {
-            "response": None,
-            "type": "needs_processing",
-            "source": "nlp",
-            "analysis": analysis,
-            "message": message
+            "response": result,
+            "type": "fallback",
+            "source": "default"
         }
-        
-        # If client requested speech, generate a simple response
-        if include_speech and analysis:
-            emotion = analysis['sentiment']['emotion'] if analysis else 'neutral'
-            summary = f"I understand you're {emotion}. What would you like to talk about?"
-            response["audio"] = JAI.text_to_speech(summary)
-        
+        if include_speech:
+            response["audio"] = JAI.text_to_speech(result)
         return response
 
-# ========== UNIFIED API ENDPOINT ==========
+# ========== API ENDPOINTS ==========
 
 @app.route('/api/chat', methods=['POST', 'OPTIONS'])
-@app.route('/api/chat/', methods=['POST', 'OPTIONS'])
 def api_chat():
-    """One endpoint for everything"""
-    # Handle OPTIONS preflight request
     if request.method == 'OPTIONS':
         return '', 200
     
@@ -286,148 +293,11 @@ def api_chat():
         result = JAI.generate_response(message, client_id, options)
         return jsonify(result)
     except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()
         logger.error(f"Error in api_chat: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
-
-# ========== ADDITIONAL API ENDPOINTS ==========
-
-@app.route('/api/analyze', methods=['POST', 'OPTIONS'])
-def api_analyze():
-    """Analyze text using NLP"""
-    if request.method == 'OPTIONS':
-        return '', 200
-    
-    data = request.json
-    text = data.get('text', '').strip()
-    
-    if not text:
-        return jsonify({'error': 'Text required'}), 400
-    
-    analysis = JAINLP.analyze_sentence(text)
-    return jsonify(analysis)
-
-@app.route('/api/speak', methods=['POST', 'OPTIONS'])
-def api_speak():
-    """Text-to-speech"""
-    if request.method == 'OPTIONS':
-        return '', 200
-    
-    data = request.json
-    text = data.get('text', '').strip()
-    
-    if not text:
-        return jsonify({'error': 'Text required'}), 400
-    
-    audio = JAI.text_to_speech(text)
-    if audio:
-        return jsonify({'success': True, 'audio': audio})
-    return jsonify({'error': 'TTS failed'}), 500
-
-@app.route('/api/calculate', methods=['POST', 'OPTIONS'])
-def api_calculate():
-    """Direct calculation endpoint"""
-    if request.method == 'OPTIONS':
-        return '', 200
-    
-    data = request.json
-    expression = data.get('expression', '').strip()
-    
-    if not expression:
-        return jsonify({'error': 'Expression required'}), 400
-    
-    result = JAI.calculate(expression)
-    if result:
-        return jsonify({'result': result})
-    return jsonify({'error': 'Invalid expression'}), 400
-
-@app.route('/api/convert', methods=['POST', 'OPTIONS'])
-def api_convert():
-    """Direct currency conversion"""
-    if request.method == 'OPTIONS':
-        return '', 200
-    
-    data = request.json
-    amount = data.get('amount')
-    from_curr = data.get('from', '').upper()
-    to_curr = data.get('to', '').upper()
-    
-    if not amount or not from_curr or not to_curr:
-        return jsonify({'error': 'Amount, from, to required'}), 400
-    
-    result = JAI.currency_convert(float(amount), from_curr, to_curr)
-    if result:
-        return jsonify({'result': result})
-    return jsonify({'error': 'Currency not supported'}), 400
-
-# ========== ADMIN ENDPOINTS ==========
-
-@app.route('/admin/db', methods=['GET'])
-def admin_download_db():
-    """Download database backup"""
-    auth = request.headers.get('X-Admin-Key')
-    if auth != ADMIN_KEY:
-        return jsonify({'error': 'Unauthorized'}), 401
-    return send_file(DB_PATH, as_attachment=True, download_name=f'jai_intelligence_{datetime.now().strftime("%Y%m%d")}.db')
-
-@app.route('/admin/taught', methods=['POST'])
-def admin_add_taught():
-    """Admin adds taught response"""
-    auth = request.headers.get('X-Admin-Key')
-    if auth != ADMIN_KEY:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    data = request.json
-    client_id = data.get('clientId', 'global')
-    trigger = data.get('trigger', '').strip()
-    response = data.get('response', '').strip()
-    
-    if not trigger or not response:
-        return jsonify({'error': 'Trigger and response required'}), 400
-    
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('INSERT INTO taught (client_id, trigger, response) VALUES (?, ?, ?)', (client_id, trigger, response))
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True})
-
-@app.route('/admin/suggestions', methods=['GET'])
-def admin_get_suggestions():
-    """Get pending suggestions"""
-    auth = request.headers.get('X-Admin-Key')
-    if auth != ADMIN_KEY:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM suggestions WHERE status = "pending" ORDER BY created_at DESC')
-    suggestions = [dict(row) for row in cur.fetchall()]
-    conn.close()
-    return jsonify(suggestions)
-
-@app.route('/admin/suggestions/<int:suggestion_id>', methods=['POST'])
-def admin_approve_suggestion(suggestion_id):
-    """Approve a suggestion"""
-    auth = request.headers.get('X-Admin-Key')
-    if auth != ADMIN_KEY:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('SELECT client_id, trigger, suggested_response FROM suggestions WHERE id = ?', (suggestion_id,))
-    suggestion = cur.fetchone()
-    
-    if suggestion:
-        cur.execute('INSERT INTO taught (client_id, trigger, response) VALUES (?, ?, ?)',
-                   (suggestion['client_id'], suggestion['trigger'], suggestion['suggested_response']))
-        cur.execute('UPDATE suggestions SET status = "approved" WHERE id = ?', (suggestion_id,))
-        conn.commit()
-        conn.close()
-        return jsonify({'success': True})
-    
-    conn.close()
-    return jsonify({'error': 'Suggestion not found'}), 404
+        logger.error(f"Traceback: {error_detail}")
+        return jsonify({'error': 'Internal server error', 'detail': str(e)}), 500
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -435,9 +305,16 @@ def health():
         'status': 'healthy',
         'name': 'JAI1 - Intelligence Service',
         'creator': 'Joshua Giwa',
-        'version': '3.1',
+        'version': '4.0',
         'features': ['chat', 'calculate', 'currency', 'teaching', 'tts', 'nlp']
     })
+
+@app.route('/admin/db', methods=['GET'])
+def admin_download_db():
+    auth = request.headers.get('X-Admin-Key')
+    if auth != ADMIN_KEY:
+        return jsonify({'error': 'Unauthorized'}), 401
+    return send_file(DB_PATH, as_attachment=True, download_name=f'jai_intelligence_{datetime.now().strftime("%Y%m%d")}.db')
 
 @app.errorhandler(404)
 def not_found(e):
@@ -453,6 +330,6 @@ def server_error(e):
 setup_database()
 
 if __name__ == '__main__':
-    logger.info("🧠 JAI1 - Unified Intelligence Service starting...")
+    logger.info("🧠 JAI1 - Intelligence Service starting...")
     logger.info(f"🚀 API server running on port {PORT}")
     app.run(host='0.0.0.0', port=PORT, debug=False)
