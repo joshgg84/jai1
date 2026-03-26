@@ -12,6 +12,32 @@ class JAINatural:
         """Generate natural conversation responses"""
         msg = message.lower()
         
+        # ========== HOW ARE YOU? EXCHANGE ==========
+        if any(h in msg for h in ["how are you", "how you doing", "how's it going", "how are you doing"]):
+            return random.choice([
+                "I'm doing great! Thanks for asking. How about you?",
+                "I'm good, just vibing. What about you?",
+                "Doing well! What's new with you today?",
+                "I'm here! More importantly, how are YOU doing?"
+            ])
+        
+        # ========== "I'M FINE, WHAT ABOUT YOU?" FOLLOW-UP ==========
+        if any(f in msg for f in ["i'm fine", "i am fine", "i'm good", "i am good", "doing good", "doing well", "i'm alright"]):
+            if any(q in msg for q in ["what about you", "how about you", "and you", "u?", "you?"]):
+                return random.choice([
+                    "I'm doing great, thanks for asking! 😊 What's been the highlight of your day so far?",
+                    "I'm good! Just been here, ready to chat. What's new with you?",
+                    "I'm doing well! Thanks for checking. What's on your mind today?",
+                    "I'm alright — better now that you asked. So what's happening in your world?"
+                ])
+            else:
+                # Just "I'm fine" without asking back
+                return random.choice([
+                    "Glad to hear that! 😊 What's been going well?",
+                    "That's good! Anything exciting happening today?",
+                    "Happy to hear that. What are you up to?"
+                ])
+        
         # ========== ASKING ABOUT WORK ==========
         if any(w in msg for w in ["what do you do", "what are you doing", "what do you do for work"]):
             responses = [
