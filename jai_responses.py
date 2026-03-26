@@ -1,5 +1,6 @@
 """JAI - Joshua's Artificial Intelligence
 Your companion, coach, friend, calculator, and calendar.
+Now with NLP for true language understanding.
 """
 
 import random
@@ -10,8 +11,7 @@ from jai_nlp import JAINLP
 from jai_casual import JAICasual
 from jai_natural import JAINatural
 from jai_conversation import JAIConversational
-
-# No advanced NLP import
+from jai_advanced_nlp import JAIAdvancedNLP
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +38,6 @@ class JAIPersonality:
         
         # Step 3: Extract intent
         intent = JAINLP.extract_intent(message)
-        
-        logger.info(f"JAIPersonality received: {message[:50]}...")
-        logger.info(f"Intent detected: {intent}")
         
         # ========== TIME GREETINGS ==========
         if any(g in msg for g in ["good morning", "morning"]):
@@ -233,6 +230,42 @@ class JAIPersonality:
                 return f"In '{word}', '{letter}' is the {position}{ordinal} letter. Anything else?"
             else:
                 return f"'{letter}' doesn't appear in '{word}'. The word has: {', '.join(sorted(set(word)))}"
+        
+        # ========== ADVANCED NLP ANALYSIS ==========
+        try:
+            advanced = JAIAdvancedNLP.full_analysis(message)
+            
+            if advanced["dependencies"]["has_subject"] and advanced["dependencies"]["has_verb"]:
+                deps = advanced["dependencies"]
+                subject = deps["subjects"][0]["word"] if deps["subjects"] else "someone"
+                verb = deps["verbs"][0]["word"] if deps["verbs"] else "did"
+                obj = deps["objects"][0]["word"] if deps["objects"] and len(deps["objects"]) > 0 else "something"
+                
+                if "?" not in message:
+                    if advanced["prepositions"]["has_location"]:
+                        loc = advanced["prepositions"]["location_phrases"][0]["phrase"]
+                        return f"So {subject} {verb} {obj} {loc}. That sounds interesting. What's that like?"
+                    elif advanced["prepositions"]["has_time"]:
+                        time_phrase = advanced["prepositions"]["time_phrases"][0]["phrase"]
+                        return f"You're doing {obj} {time_phrase}? Tell me more about that."
+                    else:
+                        return f"You mentioned {subject} {verb}ing {obj}. What else can you tell me about that?"
+            
+            if advanced["prepositions"]["has_location"]:
+                loc_phrase = advanced["prepositions"]["location_phrases"][0]["phrase"]
+                return f"I see you mentioned {loc_phrase}. How is it there?"
+            
+            if advanced["prepositions"]["has_time"]:
+                time_phrase = advanced["prepositions"]["time_phrases"][0]["phrase"]
+                return f"You mentioned {time_phrase}. What do you have planned then?"
+            
+            if advanced["coreference"]["has_pronouns"]:
+                for p in advanced["coreference"]["pronouns"]:
+                    if p["likely_referent"]:
+                        return f"When you said '{p['pronoun']}', were you talking about {p['likely_referent']}? Tell me more about {p['likely_referent']}."
+        except Exception as e:
+            # If advanced NLP fails, continue with regular responses
+            pass
         
         # ========== CONTEXT FROM NOUN PHRASES ==========
         if analysis and analysis['noun_phrases']:
