@@ -16,7 +16,7 @@ from gtts import gTTS
 
 # Import NLP modules
 from jai_nlp import JAINLP
-from jai_advanced_nlp import JAIAdvancedNLP
+#from jai_advanced_nlp import JAIAdvancedNLP
 
 app = Flask(__name__)
 CORS(app)
@@ -242,7 +242,7 @@ class JAI:
         # Step 7: Default — NLP analysis
         analysis = {
             "sentiment": JAINLP.analyze_sentence(message),
-            "advanced": JAIAdvancedNLP.full_analysis(message),
+            #"advanced": JAIAdvancedNLP.full_analysis(message),
             "keywords": JAINLP.extract_keywords(message),
             "intent": JAINLP.extract_intent(message)
         }
