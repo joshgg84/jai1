@@ -1,16 +1,19 @@
 """JAI - Advanced NLP
 Dependency parsing, coreference resolution, and prepositional phrase understanding.
-Requires: pip install spacy spacy-transformers
+Uses pre-downloaded spaCy model from requirements.txt.
 """
 
 import spacy
 import re
 from collections import defaultdict
 
-# Load spaCy model (download first time)
+# Load spaCy model (pre-downloaded via requirements.txt)
 try:
     nlp = spacy.load("en_core_web_sm")
+    print("✅ spaCy model loaded successfully")
 except OSError:
+    print("❌ spaCy model not found. Make sure it's in requirements.txt")
+    # Fallback to downloading if not found
     import subprocess
     subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
     nlp = spacy.load("en_core_web_sm")
@@ -111,7 +114,7 @@ class JAIAdvancedNLP:
         coref_map = {}
         pronouns = []
         
-        # Simple coreference resolution (can be enhanced with neural coref)
+        # Simple coreference resolution
         for token in doc:
             if token.pos_ == "PRON":
                 # Try to find previous noun phrase
@@ -205,7 +208,6 @@ class JAIAdvancedNLP:
             verb = deps["verbs"][0]["word"] if deps["verbs"] else "did"
             obj = deps["objects"][0]["word"] if deps["objects"] else "something"
             
-            # Check if it's a question
             if text.strip().endswith("?"):
                 return f"You're asking about {subject} {verb}ing {obj}. That's interesting. What makes you curious about that?"
             else:
