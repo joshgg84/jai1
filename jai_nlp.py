@@ -2,25 +2,38 @@
 Handles word formation, grammar, sentiment, and language understanding.
 """
 
+import os
 import re
 import random
 import nltk
 from textblob import TextBlob
 from collections import Counter
 
-# Download required NLTK data (run once)
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
-try:
-    nltk.data.find('taggers/averaged_perceptron_tagger')
-except LookupError:
-    nltk.download('averaged_perceptron_tagger')
-try:
-    nltk.data.find('corpora/wordnet')
-except LookupError:
-    nltk.download('wordnet')
+# ========== NLTK DATA SETUP FOR RENDER ==========
+# Set up NLTK data directory in the project folder (writable on Render)
+NLTK_DATA_DIR = os.path.join(os.path.dirname(__file__), 'nltk_data')
+os.makedirs(NLTK_DATA_DIR, exist_ok=True)
+nltk.data.path.insert(0, NLTK_DATA_DIR)
+
+# Download required NLTK data if not present
+def download_nltk_data():
+    """Download required NLTK corpora"""
+    resources = {
+        'punkt': 'tokenizers/punkt',
+        'averaged_perceptron_tagger': 'taggers/averaged_perceptron_tagger',
+        'wordnet': 'corpora/wordnet',
+        'brown': 'corpora/brown'
+    }
+    
+    for name, path in resources.items():
+        try:
+            nltk.data.find(path)
+        except LookupError:
+            print(f"Downloading {name}...")
+            nltk.download(name, download_dir=NLTK_DATA_DIR)
+
+# Run download on import
+download_nltk_data()
 
 class JAINLP:
     """NLP processor for JAI"""
