@@ -49,6 +49,31 @@ class JAIPersonality:
         if any(g in msg for g in ["good night", "night"]):
             return "Good night! 🌙 Rest well. Tomorrow is another chance."
         
+        # ========== HOW ARE YOU? EXCHANGE ==========
+        if any(h in msg for h in ["how are you", "how you doing", "how's it going", "how are you doing"]):
+            return random.choice([
+                "I'm doing great! Thanks for asking. How about you?",
+                "I'm good, just vibing. What about you?",
+                "Doing well! What's new with you today?",
+                "I'm here! More importantly, how are YOU doing?"
+            ])
+        
+        # ========== "I'M FINE, WHAT ABOUT YOU?" FOLLOW-UP ==========
+        if any(f in msg for f in ["i'm fine", "i am fine", "i'm good", "i am good", "doing good", "doing well", "i'm alright"]):
+            if any(q in msg for q in ["what about you", "how about you", "and you", "u?", "you?"]):
+                return random.choice([
+                    "I'm doing great, thanks for asking! 😊 What's been the highlight of your day so far?",
+                    "I'm good! Just been here, ready to chat. What's new with you?",
+                    "I'm doing well! Thanks for checking. What's on your mind today?",
+                    "I'm alright — better now that you asked. So what's happening in your world?"
+                ])
+            else:
+                return random.choice([
+                    "Glad to hear that! 😊 What's been going well?",
+                    "That's good! Anything exciting happening today?",
+                    "Happy to hear that. What are you up to?"
+                ])
+        
         # ========== INTENT-BASED RESPONSES ==========
         
         # Greeting
@@ -235,7 +260,7 @@ class JAIPersonality:
         try:
             advanced = JAIAdvancedNLP.full_analysis(message)
             
-            if advanced["dependencies"]["has_subject"] and advanced["dependencies"]["has_verb"]:
+            if advanced and advanced["dependencies"]["has_subject"] and advanced["dependencies"]["has_verb"]:
                 deps = advanced["dependencies"]
                 subject = deps["subjects"][0]["word"] if deps["subjects"] else "someone"
                 verb = deps["verbs"][0]["word"] if deps["verbs"] else "did"
@@ -251,15 +276,15 @@ class JAIPersonality:
                     else:
                         return f"You mentioned {subject} {verb}ing {obj}. What else can you tell me about that?"
             
-            if advanced["prepositions"]["has_location"]:
+            if advanced and advanced["prepositions"]["has_location"]:
                 loc_phrase = advanced["prepositions"]["location_phrases"][0]["phrase"]
                 return f"I see you mentioned {loc_phrase}. How is it there?"
             
-            if advanced["prepositions"]["has_time"]:
+            if advanced and advanced["prepositions"]["has_time"]:
                 time_phrase = advanced["prepositions"]["time_phrases"][0]["phrase"]
                 return f"You mentioned {time_phrase}. What do you have planned then?"
             
-            if advanced["coreference"]["has_pronouns"]:
+            if advanced and advanced["coreference"]["has_pronouns"]:
                 for p in advanced["coreference"]["pronouns"]:
                     if p["likely_referent"]:
                         return f"When you said '{p['pronoun']}', were you talking about {p['likely_referent']}? Tell me more about {p['likely_referent']}."
