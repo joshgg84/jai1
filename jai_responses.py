@@ -329,7 +329,7 @@ class JAIPersonality:
         keywords = JAINLP.extract_keywords(message)
         if keywords:
             keyword_context = f" about {keywords[0]}" if keywords else ""
-            return f"{random.choice(['That is interesting', 'Tell me more', 'I hear you', 'That is real'])}{keyword_context}. {random.choice(['What else is on your mind', 'How are you feeling about that', 'What do you think', 'Tell me more'])}?"
+            return f"{random.choice(['That\'s interesting', 'Tell me more', 'I hear you', 'That\'s real'])}{keyword_context}. {random.choice(['What else is on your mind', 'How are you feeling about that', 'What do you think', 'Tell me more'])}?"
         
         # ========== DEFAULT ==========
         return random.choice([
