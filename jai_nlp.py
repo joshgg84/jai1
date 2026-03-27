@@ -45,9 +45,9 @@ class JAINLP:
         "how far": "how are you",
         "wetin": "what",
         "abeg": "please",
-        "na wa": "that's surprising",
+        "na wa": "that is surprising",
         "wahala": "trouble",
-        "dey": "is/are",
+        "dey": "is are",
         "sabi": "know",
         "chop": "eat",
         "no wahala": "no problem",
@@ -68,10 +68,12 @@ class JAINLP:
     
     @staticmethod
     def has_vowel(word):
+        """Check if a word contains a vowel"""
         return any(char in JAINLP.VOWELS for char in word.lower())
     
     @staticmethod
     def count_syllables(word):
+        """Count syllables in a word (basic rule-based)"""
         word = word.lower()
         count = 0
         vowels = 'aeiou'
@@ -87,7 +89,16 @@ class JAINLP:
         return count
     
     @staticmethod
+    def get_part_of_speech(word):
+        """Get part of speech for a word"""
+        blob = TextBlob(word)
+        if blob.tags:
+            return blob.tags[0][1]
+        return None
+    
+    @staticmethod
     def analyze_sentence(sentence):
+        """Analyze sentence structure and return comprehensive analysis"""
         if not sentence:
             return None
         
@@ -119,7 +130,11 @@ class JAINLP:
     @staticmethod
     def extract_intent(message):
         """Extract user intent using JAIIntent patterns"""
-        msg_lower = message.lower()
+        msg_lower = message.lower().strip()
+        
+        # Check for single-word clarification
+        if msg_lower in ['wat', 'what', 'huh', 'eh', 'say', 'repeat']:
+            return 'ask_clarification'
         
         for intent, patterns in JAIIntent.INTENT_PATTERNS.items():
             for pattern in patterns:
@@ -130,6 +145,7 @@ class JAINLP:
     
     @staticmethod
     def extract_keywords(message, top_n=3):
+        """Extract most important keywords from message"""
         blob = TextBlob(message)
         stop_words = {'i', 'me', 'my', 'you', 'your', 'he', 'she', 'it', 'is', 'am', 'are', 
                       'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
@@ -165,6 +181,7 @@ class JAINLP:
     
     @staticmethod
     def generate_word_from_pattern(pattern):
+        """Generate a word following a pattern (C=consonant, V=vowel)"""
         word = ""
         for char in pattern:
             if char == 'C':
@@ -177,6 +194,7 @@ class JAINLP:
     
     @staticmethod
     def is_valid_word_formation(word):
+        """Check if a word follows basic vowel-consonant patterns"""
         if len(word) < 2:
             return True
         
