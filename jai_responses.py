@@ -1,6 +1,6 @@
 """JAI - Joshua's Artificial Intelligence
 Your companion, coach, friend, calculator, and calendar.
-Now with centralized intent detection and handling.
+Now with enhanced intent detection and sentence formation.
 """
 
 import random
@@ -42,36 +42,36 @@ class JAIPersonality:
         
         # ========== TIME GREETINGS ==========
         if any(g in msg for g in ["good morning", "morning"]):
-            return "Good morning! 🌅 Hope you slept well. What's on your agenda today?"
+            return "Good morning! 🌅 Hope you slept well. What is on your agenda today?"
         if any(g in msg for g in ["good afternoon", "afternoon"]):
-            return "Good afternoon! 🌞 How's your day treating you?"
+            return "Good afternoon! 🌞 How is your day treating you?"
         if any(g in msg for g in ["good evening", "evening"]):
             return "Good evening! 🌙 Hope you had a productive day."
         if any(g in msg for g in ["good night", "night"]):
             return "Good night! 🌙 Rest well. Tomorrow is another chance."
         
         # ========== HOW ARE YOU? EXCHANGE ==========
-        if any(h in msg for h in ["how are you", "how you doing", "how's it going", "how are you doing"]):
+        if any(h in msg for h in ["how are you", "how you doing", "how is it going", "how are you doing"]):
             return random.choice([
-                "I'm doing great! Thanks for asking. How about you?",
-                "I'm good, just vibing. What about you?",
-                "Doing well! What's new with you today?",
-                "I'm here! More importantly, how are YOU doing?"
+                "I am doing great! Thanks for asking. How about you?",
+                "I am good, just vibing. What about you?",
+                "Doing well! What is new with you today?",
+                "I am here! More importantly, how are YOU doing?"
             ])
         
-        # ========== "I'M FINE, WHAT ABOUT YOU?" FOLLOW-UP ==========
-        if any(f in msg for f in ["i'm fine", "i am fine", "i'm good", "i am good", "doing good", "doing well", "i'm alright"]):
+        # ========== "I AM FINE, WHAT ABOUT YOU?" FOLLOW-UP ==========
+        if any(f in msg for f in ["i am fine", "i am fine", "i am good", "i am good", "doing good", "doing well", "i am alright"]):
             if any(q in msg for q in ["what about you", "how about you", "and you", "u?", "you?"]):
                 return random.choice([
-                    "I'm doing great, thanks for asking! 😊 What's been the highlight of your day so far?",
-                    "I'm good! Just been here, ready to chat. What's new with you?",
-                    "I'm doing well! Thanks for checking. What's on your mind today?",
-                    "I'm alright — better now that you asked. So what's happening in your world?"
+                    "I am doing great, thanks for asking! 😊 What has been the highlight of your day so far?",
+                    "I am good! Just been here, ready to chat. What is new with you?",
+                    "I am doing well! Thanks for checking. What is on your mind today?",
+                    "I am alright — better now that you asked. So what is happening in your world?"
                 ])
             else:
                 return random.choice([
-                    "Glad to hear that! 😊 What's been going well?",
-                    "That's good! Anything exciting happening today?",
+                    "Glad to hear that! 😊 What has been going well?",
+                    "That is good! Anything exciting happening today?",
                     "Happy to hear that. What are you up to?"
                 ])
         
@@ -88,15 +88,15 @@ class JAIPersonality:
                 return "Wow! That energy is contagious! 🎉 Tell me everything — I want to celebrate with you!"
             
             if polarity < -0.6:
-                return "That sounds really heavy. I'm here with you. Want to talk it through? No pressure."
+                return "That sounds really heavy. I am here with you. Want to talk it through? No pressure."
         
         # ========== QUESTION HANDLING ==========
         if analysis and analysis['has_question'] and intent == 'ask_general':
             return random.choice([
-                "That's a good question. What do you think?",
-                "Interesting question. What's your perspective on that?",
-                "I'm curious too — what made you ask that?",
-                "That's something to think about. What's your take?"
+                "That is a good question. What do you think?",
+                "Interesting question. What is your perspective on that?",
+                "I am curious too — what made you ask that?",
+                "That is something to think about. What is your take?"
             ])
         
         # ========== NIGERIAN SLANG DETECTION ==========
@@ -105,7 +105,7 @@ class JAIPersonality:
                 "I hear you! 😊 You dey alright? Tell me more.",
                 "Na so! I dey hear you. Wetin else dey happen?",
                 "I get you! Life no easy but we dey move. Talk to me.",
-                "Ah, you sabi! What's happening in your world?"
+                "Ah, you sabi! What is happening in your world?"
             ])
         
         # ========== CALCULATOR ==========
@@ -141,7 +141,7 @@ class JAIPersonality:
             for word in words:
                 if len(word) > 2 and word not in ['the', 'and', 'for', 'you', 'what']:
                     if not JAINLP.has_vowel(word):
-                        return f"'{word}' doesn't have any vowels! A proper word needs at least one vowel (a, e, i, o, u)."
+                        return f"'{word}' does not have any vowels! A proper word needs at least one vowel (a, e, i, o, u)."
                     syllables = JAINLP.count_syllables(word)
                     return f"'{word}' has {syllables} syllable{'s' if syllables != 1 else ''}. It contains vowels: {', '.join([v for v in word.lower() if v in JAINLP.VOWELS])}"
         
@@ -180,7 +180,7 @@ class JAIPersonality:
                 else:
                     ordinal = "th"
                 
-                return f"'{letter}' is the {position}{ordinal} letter in '{word}'. It's a {letter_type}. What else would you like to know?"
+                return f"'{letter}' is the {position}{ordinal} letter in '{word}'. It is a {letter_type}. What else would you like to know?"
             else:
                 return f"'{letter}' is not in '{word}'. The letters in '{word}' are: {', '.join(sorted(set(word)))}. Want to know about any of them?"
         
@@ -201,7 +201,7 @@ class JAIPersonality:
                     ordinal = "th"
                 return f"In '{word}', '{letter}' is the {position}{ordinal} letter. Anything else?"
             else:
-                return f"'{letter}' doesn't appear in '{word}'. The word has: {', '.join(sorted(set(word)))}"
+                return f"'{letter}' does not appear in '{word}'. The word has: {', '.join(sorted(set(word)))}"
         
         # ========== ADVANCED NLP ANALYSIS ==========
         try:
@@ -216,10 +216,10 @@ class JAIPersonality:
                 if "?" not in message:
                     if advanced["prepositions"]["has_location"]:
                         loc = advanced["prepositions"]["location_phrases"][0]["phrase"]
-                        return f"So {subject} {verb} {obj} {loc}. That sounds interesting. What's that like?"
+                        return f"So {subject} {verb} {obj} {loc}. That sounds interesting. What is that like?"
                     elif advanced["prepositions"]["has_time"]:
                         time_phrase = advanced["prepositions"]["time_phrases"][0]["phrase"]
-                        return f"You're doing {obj} {time_phrase}? Tell me more about that."
+                        return f"You are doing {obj} {time_phrase}? Tell me more about that."
                     else:
                         return f"You mentioned {subject} {verb}ing {obj}. What else can you tell me about that?"
             
@@ -242,7 +242,7 @@ class JAIPersonality:
         if analysis and analysis['noun_phrases']:
             main_topic = analysis['noun_phrases'][0]
             if len(analysis['words']) > 2 and len(main_topic) > 2:
-                return f"You mentioned {main_topic}. Tell me more about that. What's on your mind?"
+                return f"You mentioned {main_topic}. Tell me more about that. What is on your mind?"
         
         # ========== CASUAL USER STATEMENTS ==========
         casual = JAICasual.get_casual_response(message)
@@ -267,7 +267,7 @@ class JAIPersonality:
                     f"What about {keywords[0]} interests you?",
                     f"Tell me more about {keywords[0]}.",
                     f"How does {keywords[0]} fit into your day?",
-                    f"What's your experience with {keywords[0]}?"
+                    f"What is your experience with {keywords[0]}?"
                 ]
                 return random.choice(follow_ups)
         
@@ -275,15 +275,15 @@ class JAIPersonality:
         keywords = JAINLP.extract_keywords(message)
         if keywords:
             keyword_context = f" about {keywords[0]}" if keywords else ""
-            return f"{random.choice(['That\'s interesting', 'Tell me more', 'I hear you', 'That\'s real'])}{keyword_context}. {random.choice(['What else is on your mind', 'How are you feeling about that', 'What do you think', 'Tell me more'])}?"
+            return f"{random.choice(['That is interesting', 'Tell me more', 'I hear you', 'That is real'])}{keyword_context}. {random.choice(['What else is on your mind', 'How are you feeling about that', 'What do you think', 'Tell me more'])}?"
         
         # ========== DEFAULT ==========
         return random.choice([
-            "I'm here. What's on your mind?",
-            "What's good? I'm listening.",
-            "Tell me what's going on. No small talk needed.",
-            "How's your heart today?",
-            "That's interesting. Tell me more.",
-            "Keep going. I'm listening.",
-            "I'm with you. What's next on your mind?"
+            "I am here. What is on your mind?",
+            "What is good? I am listening.",
+            "Tell me what is going on. No small talk needed.",
+            "How is your heart today?",
+            "That is interesting. Tell me more.",
+            "Keep going. I am listening.",
+            "I am with you. What is next on your mind?"
         ])
