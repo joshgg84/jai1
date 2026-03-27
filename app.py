@@ -1,6 +1,6 @@
 """JAI1 - Pure Intelligence Service
-Simplified: Only /api/chat and /health endpoints.
-Everything else is handled by the main endpoint.
+Unified API: One endpoint for all intelligence.
+Uses Gemini AI for true language understanding with fallback to rule-based.
 """
 
 import os
@@ -15,9 +15,10 @@ from flask_cors import CORS
 from datetime import datetime
 from gtts import gTTS
 
-# Import JAI's personality (it imports everything else)
+# Import JAI's rule-based personality
 from jai_responses import JAIPersonality
 from jai_nlp import JAINLP
+from jai_gemini import JAIGemini
 
 app = Flask(__name__)
 CORS(app)
@@ -35,10 +36,26 @@ logger = logging.getLogger(__name__)
 # ========== CONFIGURATION ==========
 ADMIN_KEY = os.getenv('ADMIN_KEY', 'jai_admin_key_2025')
 PORT = int(os.getenv('PORT', 5001))
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 os.makedirs(DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, 'jai_intelligence.db')
+
+# ========== INITIALIZE GEMINI ==========
+GEMINI_AVAILABLE = False
+if GEMINI_API_KEY:
+    try:
+        GEMINI_AVAILABLE = JAIGemini.initialize(GEMINI_API_KEY)
+        if GEMINI_AVAILABLE:
+            logger.info("✅ Gemini AI initialized successfully")
+        else:
+            logger.warning("⚠️ Gemini initialization failed")
+    except Exception as e:
+        logger.error(f"Gemini init error: {e}")
+        GEMINI_AVAILABLE = False
+else:
+    logger.warning("⚠️ No Gemini API key found. Using rule-based responses only.")
 
 # ========== DATABASE ==========
 
@@ -160,7 +177,7 @@ class JAI:
         options = options or {}
         include_speech = options.get('speech', False)
         
-        # Step 1: Check taught response
+        # Step 1: Check taught response (database)
         taught = JAI.get_taught_response(client_id, message)
         if taught:
             response = {
@@ -239,32 +256,45 @@ class JAI:
                 response["audio"] = JAI.text_to_speech(result)
             return response
         
-        # Step 7: Use JAIPersonality for all conversation
+        # Step 7: Try Gemini AI for intelligent response
+        if GEMINI_AVAILABLE:
+            try:
+                gemini_response = JAIGemini.generate_response(message)
+                if gemini_response and len(gemini_response) > 5:
+                    response = {
+                        "response": gemini_response,
+                        "type": "ai",
+                        "source": "gemini"
+                    }
+                    if include_speech:
+                        response["audio"] = JAI.text_to_speech(gemini_response)
+                    return response
+            except Exception as e:
+                logger.error(f"Gemini error: {e}")
+        
+        # Step 8: Fallback to rule-based personality
         try:
             personality_response = JAIPersonality.get_response(message, "", "No lesson")
-            logger.info(f"JAIPersonality returned: {personality_response[:100] if personality_response else 'None'}")
+            if personality_response:
+                response = {
+                    "response": personality_response,
+                    "type": "personality",
+                    "source": "jai_responses"
+                }
+                if include_speech:
+                    response["audio"] = JAI.text_to_speech(personality_response)
+                return response
         except Exception as e:
-            logger.error(f"JAIPersonality error: {e}")
-            personality_response = None
+            logger.error(f"Personality error: {e}")
         
-        if personality_response:
-            response = {
-                "response": personality_response,
-                "type": "personality",
-                "source": "jai_responses"
-            }
-            if include_speech:
-                response["audio"] = JAI.text_to_speech(personality_response)
-            return response
-        
-        # Step 8: Fallback if JAIPersonality fails
-        logger.warning("JAIPersonality returned None, using fallback")
-        fallback_responses = [
+        # Step 9: Ultimate fallback
+        fallbacks = [
             "I'm here. What's on your mind?",
             "Tell me what's going on.",
-            "What would you like to talk about?"
+            "What would you like to talk about?",
+            "I'm listening. What's on your heart?"
         ]
-        result = random.choice(fallback_responses)
+        result = random.choice(fallbacks)
         response = {
             "response": result,
             "type": "fallback",
@@ -305,8 +335,9 @@ def health():
         'status': 'healthy',
         'name': 'JAI1 - Intelligence Service',
         'creator': 'Joshua Giwa',
-        'version': '4.0',
-        'features': ['chat', 'calculate', 'currency', 'teaching', 'tts', 'nlp']
+        'version': '5.0',
+        'features': ['chat', 'calculate', 'currency', 'teaching', 'tts', 'ai'],
+        'gemini_available': GEMINI_AVAILABLE
     })
 
 @app.route('/admin/db', methods=['GET'])
@@ -331,5 +362,6 @@ setup_database()
 
 if __name__ == '__main__':
     logger.info("🧠 JAI1 - Intelligence Service starting...")
+    logger.info(f"🤖 Gemini AI: {'ENABLED' if GEMINI_AVAILABLE else 'DISABLED'}")
     logger.info(f"🚀 API server running on port {PORT}")
     app.run(host='0.0.0.0', port=PORT, debug=False)
