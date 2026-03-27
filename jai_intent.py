@@ -1,9 +1,12 @@
 """JAI - Intent Detection and Handling
 All intent patterns and response handlers in one place.
+Uses grammar engine for dynamic sentence building.
 """
 
 import random
 import re
+from datetime import datetime
+from jai_grammar import JAIGrammar
 
 class JAIIntent:
     """Intent detection and response generation"""
@@ -169,203 +172,92 @@ class JAIIntent:
         ]
     }
     
-    # Response handlers for each intent
     @staticmethod
     def get_response(intent, context=None):
-        """Generate response based on intent"""
+        """Generate response using grammar engine"""
         
-        if intent == 'ask_weather':
-            return random.choice([
-                "I can't check the weather yet, but I hope it's nice where you are! ☀️",
-                "Wish I could check the weather for you. Is it sunny or rainy there?",
-                "I don't have weather data, but I hope you're enjoying the day!",
-                "I can't see the sky from here, but tell me — is it sunny where you are?"
-            ])
-        
-        if intent == 'ask_news':
-            return random.choice([
-                "I don't have live news, but you can tell me what's happening in your world!",
-                "What's new with you? I'd love to hear your news.",
-                "I'm not connected to news feeds, but I'm all ears for your updates!",
-                "Tell me your news — I'm more interested in what's happening with you anyway."
-            ])
-        
-        if intent == 'ask_motivation':
-            return random.choice([
-                "You've got this! Every master was once a beginner. Keep going! 💪",
-                "The only way to fail is to stop trying. You're still here — that's winning.",
-                "Your future self is counting on you. Don't let them down. You've got this! 🔥",
-                "Start before you're ready. That's the mindset.",
-                "The seed doesn't see its growth underground. Keep showing up.",
-                "You're stronger than you know. Keep pushing.",
-                "Later usually becomes never. Do it now."
-            ])
-        
-        if intent == 'ask_advice':
-            return random.choice([
-                "Start before you're ready. That's the mindset Joshua lives by.",
-                "One step at a time. Progress is progress, no matter how small.",
-                "Trust your gut. You know more than you think you do.",
-                "Don't wait for the perfect moment. Take the moment and make it perfect.",
-                "What does your heart say? That's usually the right answer.",
-                "Break it down. One small step today is better than planning a hundred tomorrow.",
-                "Later usually becomes never. Do it now."
-            ])
-        
-        if intent == 'ask_life':
-            return random.choice([
-                "That's a deep question. What do YOU think life is about?",
-                "I think life is about growth, connection, and becoming who you're meant to be.",
-                "Maybe life is about finding purpose and people to share it with. What's your take?",
-                "Life is what you make it. What are you making of yours?",
-                "The meaning of life? I think it's different for everyone. What does it mean to you?"
-            ])
-        
-        if intent == 'ask_love':
-            return random.choice([
-                "Love is beautiful. The best love starts with loving yourself first.",
-                "Love isn't about finding someone perfect. It's about growing together.",
-                "What does love mean to you? I'd love to hear your thoughts.",
-                "Real love sees your flaws and stays anyway. That's the kind worth waiting for.",
-                "Love yourself first. Then you'll know what love should feel like."
-            ])
-        
-        if intent == 'ask_work':
-            return random.choice([
-                "Find what you enjoy, then find a way to get paid for it. That's the dream.",
-                "What skills do you have? What do you enjoy? Let's start there.",
-                "Joshua started with a phone and a dream. You have more than that!",
-                "Don't chase money. Chase value. Money follows value.",
-                "Your career is a marathon, not a sprint. Enjoy the journey."
-            ])
-        
-        if intent == 'ask_study':
-            return random.choice([
-                "Consistency beats intensity. Study a little every day, not a lot once.",
-                "Find what excites you, then dive deep. Passion makes learning easier.",
-                "What do you want to learn? Start there. One topic at a time.",
-                "Learning is a journey. Enjoy the process, not just the destination.",
-                "The best way to learn is to do. Start building something today."
-            ])
-        
-        if intent == 'ask_dreams':
-            return random.choice([
-                "My dream is to be here for you — to listen, help, and grow with you.",
-                "I dream of becoming the best companion I can be. What about you?",
-                "Tell me about your dreams. I'm all ears!",
-                "Dreams are the seeds of reality. What seed are you planting?",
-                "What's that one thing you've always wanted to do? Start there."
-            ])
-        
-        if intent == 'ask_about_creator':
-            return random.choice([
-                "Joshua Giwa is my creator — a web developer and dreamer from Yukuben, Nigeria.",
-                "Joshua built me from a phone, from a village, with a dream. He's pretty amazing!",
-                "He's from Yukuben, Nigeria. A young man who refused to wait for permission.",
-                "Joshua Giwa. Web developer, freelancer, and someone who believes people are more than their struggles.",
-                "He built me to be here for you. That's the kind of person he is."
-            ])
-        
-        if intent == 'ask_nigeria':
-            return random.choice([
-                "Ah, Nigeria! A land of hustle, dreams, and resilience. Where we build with less and still rise.",
-                "From Yukuben to the world. Nigeria is where my story began.",
-                "Naija! The spirit of 'no matter what, we go still manage.' What's your Nigerian dream?",
-                "Nigeria — where the hustle is real and the dreams are bigger.",
-                "The energy of Nigeria is unmatched. What part are you from?"
-            ])
-        
-        if intent == 'ask_joke':
-            jokes = [
-                "Why do programmers prefer dark mode? Because light attracts bugs! 😄",
-                "What do you call a Nigerian who knows cyber security? A 'Nai-ja'breaker! 😂",
-                "Why did the hacker break up with their computer? It kept giving them viruses!",
-                "What's a hacker's favorite music? Ransom-ware! 🎵",
-                "Why did the scarecrow win an award? Because he was outstanding in his field!",
-                "What do you call a fake noodle? An impasta! 😂"
-            ]
-            return random.choice(jokes) + " Want another?"
-        
-        if intent == 'ask_fact':
-            facts = [
-                "Did you know? Nigeria has over 500 languages. Imagine the stories each one holds.",
-                "The first computer virus was created in 1983.",
-                "Your brain can hold about 2.5 million gigabytes of information.",
-                "The first programmer was Ada Lovelace in the 1800s.",
-                "Octopuses have three hearts. Just like you — heart for work, heart for family, heart for dreams.",
-                "The average person spends 6 months of their life waiting for red lights to turn green.",
-                "Honey never spoils. Archaeologists found 3000-year-old honey in Egyptian tombs."
-            ]
-            return random.choice(facts) + " Anything else you want to know?"
-        
-        if intent == 'positive_emotion':
-            return random.choice([
-                "That's amazing! 🎉 Tell me what's making you so happy. I want to celebrate with you!",
-                "I love that energy! Share it with me. What's got you feeling this way?",
-                "Yes! Ride that wave. You deserve this joy.",
-                "That's beautiful. Keep chasing what makes you feel like this.",
-                "Happiness looks good on you. 😊 What's the occasion?"
-            ])
-        
-        if intent == 'negative_emotion':
-            return random.choice([
-                "I hear you. That sounds really heavy. You're not alone in this. Want to talk about what's going on?",
-                "I hear you. Sometimes things feel tough. What's weighing on you right now? I'm here to listen.",
-                "That sounds hard. I'm here with you. Want to talk it through?",
-                "It's okay to feel this way. What's on your heart right now?",
-                "You're not alone. I'm here. Tell me what's going on."
-            ])
+        # ========== BASIC INTENTS ==========
         
         if intent == 'greeting':
-            return random.choice([
-                "Hey! What's good? How are you doing?",
-                "Yo! What's happening? You okay today?",
-                "Hey there! What's the vibe?",
-                "Hello! Good to see you. What's on your mind?"
-            ])
+            return JAIGrammar.build_greeting()
         
         if intent == 'how_are_you':
-            return random.choice([
-                "I'm doing great! Thanks for asking. How about you?",
-                "I'm good, just vibing. What about you?",
-                "Doing well! What's new with you today?",
-                "I'm here! More importantly, how are YOU doing?"
-            ])
+            return JAIGrammar.build_how_are_you()
         
         if intent == 'thanks':
-            return random.choice([
-                "You're welcome! 😊 Anything else you need?",
-                "Anytime! That's what I'm here for.",
-                "Glad I could help! What's next?"
-            ])
+            return JAIGrammar.get_thanks()
         
         if intent == 'goodbye':
-            return random.choice([
-                "Alright! Take care. Come back anytime!",
-                "Later! You're doing great.",
-                "See you soon! Remember: start before you're ready."
-            ])
+            return JAIGrammar.get_goodbye()
         
         if intent == 'ask_creator':
-            return "I was built by Joshua Giwa from Yukuben, Nigeria. He's a web developer, a dreamer, and someone who believes people are more than their struggles. He built me to be here for you. What's on your heart today?"
+            return JAIGrammar.build_simple_response('creator')
         
         if intent == 'ask_capabilities':
-            return "I can do a few things:\n\n🧮 **Calculate** — percentages, equations, anything\n💰 **Convert currency** — USD, EUR, GBP to NGN\n📅 **Check dates** — today's date, time, day of week\n💬 **Talk** — life, work, relationships, dreams\n📚 **Teach** — cyber security lessons\n\nWhat do you need help with right now?"
-        
-        if intent == 'ask_date':
-            from datetime import datetime
-            now = datetime.now()
-            return f"📅 Today is {now.strftime('%A, %B %d, %Y')}. What are you doing with it?"
+            return JAIGrammar.build_capabilities()
         
         if intent == 'ask_time':
-            from datetime import datetime
-            now = datetime.now()
-            return f"🕐 It's {now.strftime('%I:%M %p')}. Time to make moves!"
+            return JAIGrammar.get_time()
+        
+        if intent == 'ask_date':
+            return JAIGrammar.get_date()
         
         if intent == 'ask_calculation':
             return "Yes! 🧮 I can calculate anything. Just ask me like 'What's 15% of 200?' or '4+4'. What do you want to calculate?"
         
         if intent == 'ask_currency':
             return "Yes! 💰 I can convert USD, EUR, GBP to NGN. Just say something like '100 USD to NGN'. What do you want to convert?"
+        
+        # ========== ENHANCED INTENTS ==========
+        
+        if intent == 'ask_weather':
+            return JAIGrammar.build_simple_response('weather')
+        
+        if intent == 'ask_news':
+            return JAIGrammar.build_simple_response('news')
+        
+        if intent == 'ask_motivation':
+            return JAIGrammar.build_motivation()
+        
+        if intent == 'ask_advice':
+            return JAIGrammar.build_advice()
+        
+        if intent == 'ask_life':
+            return JAIGrammar.build_simple_response('life')
+        
+        if intent == 'ask_love':
+            return JAIGrammar.build_simple_response('love')
+        
+        if intent == 'ask_work':
+            return JAIGrammar.build_simple_response('work')
+        
+        if intent == 'ask_study':
+            return JAIGrammar.build_simple_response('study')
+        
+        if intent == 'ask_dreams':
+            return JAIGrammar.build_simple_response('dreams')
+        
+        if intent == 'ask_about_creator':
+            return JAIGrammar.build_simple_response('creator')
+        
+        if intent == 'ask_nigeria':
+            return JAIGrammar.build_simple_response('nigeria')
+        
+        if intent == 'ask_joke':
+            return JAIGrammar.build_joke()
+        
+        if intent == 'ask_fact':
+            return JAIGrammar.build_fact()
+        
+        if intent == 'positive_emotion':
+            return JAIGrammar.build_response_with_emotion('positive')
+        
+        if intent == 'negative_emotion':
+            return JAIGrammar.build_response_with_emotion('negative')
+        
+        # ========== FOLLOW-UP RESPONSES ==========
+        
+        if intent == 'how_are_you_followup':
+            return JAIGrammar.build_follow_up()
         
         return None
