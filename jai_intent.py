@@ -13,18 +13,18 @@ class JAIIntent:
     
     # Intent patterns for detection
     INTENT_PATTERNS = {
-        # Basic intents
+        # ========== BASIC INTENTS ==========
         'greeting': [
             r'\b(hi|hello|hey|howdy|sup|yo|good morning|good afternoon|good evening)\b',
-            r'\b(what\'s up|wassup|howdy)\b'
+            r'\b(what is up|wassup|howdy)\b'
         ],
         'how_are_you': [
             r'how (are you|you doing|you feeling|your day)',
-            r'how\'s (it going|your day|life)',
-            r'what\'s (up|good|happening)'
+            r'how is (it going|your day|life)',
+            r'what is (up|good|happening)'
         ],
         'how_are_you_followup': [
-            r'(i\'m|i am) (fine|good|great|okay|alright|doing well)',
+            r'(i am|i am) (fine|good|great|okay|alright|doing well)',
             r'(doing|feeling) (good|great|okay|fine)'
         ],
         'thanks': [
@@ -49,7 +49,7 @@ class JAIIntent:
         ],
         'ask_date': [
             r'what (date|day) (is it|today)',
-            r'today\'s date'
+            r'today is date'
         ],
         'ask_calculation': [
             r'\d+[\+\-\*/%]',
@@ -61,19 +61,33 @@ class JAIIntent:
             r'convert .* to naira'
         ],
         
-        # Enhanced intents
+        # ========== CLARIFICATION ==========
+        'ask_clarification': [
+            r'\b(wat|what|huh|eh)\b',
+            r'what did you (say|mean)',
+            r'i did not (hear|get|understand)',
+            r'come again',
+            r'say that again',
+            r'could you repeat',
+            r'i do not understand',
+            r'what do you mean',
+            r'explain that again',
+            r'pardon'
+        ],
+        
+        # ========== ENHANCED INTENTS ==========
         'ask_weather': [
             r'weather (today|tomorrow|now)',
             r'how is the weather',
             r'is it (raining|sunny|cloudy|hot|cold)',
-            r'what\'s the (weather|temperature)',
+            r'what is the (weather|temperature)',
             r'will it rain'
         ],
         'ask_news': [
             r'(what|any) news',
-            r'what\'s (happening|going on)',
+            r'what is (happening|going on)',
             r'tell me (news|updates)',
-            r'what\'s new (in|around)',
+            r'what is new (in|around)',
             r'any (breaking|latest) news'
         ],
         'ask_motivation': [
@@ -96,7 +110,7 @@ class JAIIntent:
             r'what is the (meaning|purpose) of life',
             r'why am i here',
             r'what is life about',
-            r'what\'s the point of life',
+            r'what is the point of life',
             r'why do we exist',
             r'what is the secret to life'
         ],
@@ -161,13 +175,13 @@ class JAIIntent:
         'positive_emotion': [
             r'(happy|excited|great|wonderful|amazing|blessed|grateful)',
             r'i feel (good|great|happy|excited)',
-            r'i\'m (so|very) (happy|excited)',
+            r'i am (so|very) (happy|excited)',
             r'this is (awesome|fantastic)'
         ],
         'negative_emotion': [
             r'(sad|depressed|lonely|tired|stressed|angry|frustrated|overwhelmed|anxious)',
             r'i feel (bad|down|sad|tired)',
-            r'i\'m (not|feeling) (good|well|okay)',
+            r'i am (not|feeling) (good|well|okay)',
             r'this is (hard|difficult)'
         ]
     }
@@ -203,10 +217,20 @@ class JAIIntent:
             return JAIGrammar.get_date()
         
         if intent == 'ask_calculation':
-            return "Yes! 🧮 I can calculate anything. Just ask me like 'What's 15% of 200?' or '4+4'. What do you want to calculate?"
+            return "Yes! 🧮 I can calculate anything. Just ask me like What is 15 percent of 200 or 4 plus 4. What do you want to calculate?"
         
         if intent == 'ask_currency':
-            return "Yes! 💰 I can convert USD, EUR, GBP to NGN. Just say something like '100 USD to NGN'. What do you want to convert?"
+            return "Yes! 💰 I can convert USD, EUR, GBP to NGN. Just say something like 100 USD to NGN. What do you want to convert?"
+        
+        # ========== CLARIFICATION ==========
+        
+        if intent == 'ask_clarification':
+            return random.choice([
+                "I said what I said. What part did you not understand?",
+                "Let me say it again: I was just talking with you. What would you like me to repeat?",
+                "Sorry if I was not clear. What would you like me to explain better?",
+                "I was just responding to you. Can you tell me what you did not understand?"
+            ])
         
         # ========== ENHANCED INTENTS ==========
         
