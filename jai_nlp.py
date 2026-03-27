@@ -2,6 +2,7 @@
 Enhanced with advanced intent detection and sentence formation rules.
 """
 
+import os
 import re
 import random
 import nltk
@@ -9,19 +10,29 @@ from textblob import TextBlob
 from collections import Counter
 from jai_intent import JAIIntent
 
-# Download required NLTK data (run once)
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
-try:
-    nltk.data.find('taggers/averaged_perceptron_tagger')
-except LookupError:
-    nltk.download('averaged_perceptron_tagger')
-try:
-    nltk.data.find('corpora/wordnet')
-except LookupError:
-    nltk.download('wordnet')
+# ========== NLTK DATA SETUP ==========
+# Set up NLTK data directory
+NLTK_DATA_DIR = os.path.join(os.path.dirname(__file__), 'nltk_data')
+os.makedirs(NLTK_DATA_DIR, exist_ok=True)
+nltk.data.path.insert(0, NLTK_DATA_DIR)
+
+# Download required NLTK data
+def download_nltk_data():
+    resources = {
+        'punkt': 'tokenizers/punkt',
+        'averaged_perceptron_tagger': 'taggers/averaged_perceptron_tagger',
+        'wordnet': 'corpora/wordnet',
+        'brown': 'corpora/brown'
+    }
+    
+    for name, path in resources.items():
+        try:
+            nltk.data.find(path)
+        except LookupError:
+            print(f"Downloading {name}...")
+            nltk.download(name, download_dir=NLTK_DATA_DIR)
+
+download_nltk_data()
 
 class JAINLP:
     """Enhanced NLP processor for JAI"""
@@ -57,12 +68,10 @@ class JAINLP:
     
     @staticmethod
     def has_vowel(word):
-        """Check if a word contains a vowel"""
         return any(char in JAINLP.VOWELS for char in word.lower())
     
     @staticmethod
     def count_syllables(word):
-        """Count syllables in a word (basic rule-based)"""
         word = word.lower()
         count = 0
         vowels = 'aeiou'
@@ -78,16 +87,7 @@ class JAINLP:
         return count
     
     @staticmethod
-    def get_part_of_speech(word):
-        """Get part of speech for a word"""
-        blob = TextBlob(word)
-        if blob.tags:
-            return blob.tags[0][1]
-        return None
-    
-    @staticmethod
     def analyze_sentence(sentence):
-        """Analyze sentence structure and return comprehensive analysis"""
         if not sentence:
             return None
         
@@ -130,7 +130,6 @@ class JAINLP:
     
     @staticmethod
     def extract_keywords(message, top_n=3):
-        """Extract most important keywords from message"""
         blob = TextBlob(message)
         stop_words = {'i', 'me', 'my', 'you', 'your', 'he', 'she', 'it', 'is', 'am', 'are', 
                       'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
@@ -149,12 +148,11 @@ class JAINLP:
         
         subjects = []
         verbs = []
-        objects = []
         
         for word, tag in tags:
-            if tag.startswith('NN') or tag == 'PRP':  # Noun or pronoun
+            if tag.startswith('NN') or tag == 'PRP':
                 subjects.append(word)
-            elif tag.startswith('VB'):  # Verb
+            elif tag.startswith('VB'):
                 verbs.append(word)
         
         return {
@@ -167,7 +165,6 @@ class JAINLP:
     
     @staticmethod
     def generate_word_from_pattern(pattern):
-        """Generate a word following a pattern (C=consonant, V=vowel)"""
         word = ""
         for char in pattern:
             if char == 'C':
@@ -180,7 +177,6 @@ class JAINLP:
     
     @staticmethod
     def is_valid_word_formation(word):
-        """Check if a word follows basic vowel-consonant patterns"""
         if len(word) < 2:
             return True
         
