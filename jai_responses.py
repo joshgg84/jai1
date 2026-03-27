@@ -106,17 +106,17 @@ class JAIPersonality:
             polarity = analysis['sentiment']['polarity']
             
             if polarity > 0.6:
-                return f"Wow! That energy is contagious! 🎉 Tell me everything — I want to celebrate with you!"
+                return "Wow! That energy is contagious! 🎉 Tell me everything — I want to celebrate with you!"
             
             if polarity < -0.6:
-                return f"That sounds really heavy. I'm here with you. Want to talk it through? No pressure."
+                return "That sounds really heavy. I'm here with you. Want to talk it through? No pressure."
         
         # Positive emotion detection
         if intent == 'positive_emotion' and analysis:
             polarity = analysis['sentiment']['polarity']
             if polarity > 0.5:
-                return f"That's amazing! 🎉 Tell me what's making you so happy. I want to celebrate with you!"
-            return f"That's great to hear! 😊 What's been going well? Share it with me."
+                return "That's amazing! 🎉 Tell me what's making you so happy. I want to celebrate with you!"
+            return "That's great to hear! 😊 What's been going well? Share it with me."
         
         # Negative emotion detection
         if intent == 'negative_emotion' and analysis:
@@ -325,11 +325,11 @@ class JAIPersonality:
                 ]
                 return random.choice(follow_ups)
         
-        # ========== DYNAMIC RESPONSE GENERATION ==========
+        # ========== DYNAMIC RESPONSE GENERATION (FIXED) ==========
         keywords = JAINLP.extract_keywords(message)
         if keywords:
             keyword_context = f" about {keywords[0]}" if keywords else ""
-            return f"{random.choice(['That\'s interesting', 'Tell me more', 'I hear you', 'That\'s real'])}{keyword_context}. {random.choice(['What else is on your mind', 'How are you feeling about that', 'What do you think', 'Tell me more'])}?"
+            return f"{random.choice(['That is interesting', 'Tell me more', 'I hear you', 'That is real'])}{keyword_context}. {random.choice(['What else is on your mind', 'How are you feeling about that', 'What do you think', 'Tell me more'])}?"
         
         # ========== DEFAULT ==========
         return random.choice([
