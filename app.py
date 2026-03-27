@@ -1,5 +1,5 @@
 """JAI1 - Intelligence Service
-Powered by Google Gemini AI for true understanding.
+Powered by Google Gemini AI via direct API call.
 """
 
 import os
@@ -9,11 +9,11 @@ import base64
 import io
 import re
 import random
+import requests
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from datetime import datetime
 from gtts import gTTS
-import google.generativeai as genai
 
 app = Flask(__name__)
 CORS(app)
@@ -36,18 +36,6 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 os.makedirs(DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, 'jai_intelligence.db')
-
-# ========== INITIALIZE GEMINI ==========
-GEMINI_AVAILABLE = False
-if GEMINI_API_KEY:
-    try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        GEMINI_AVAILABLE = True
-        logger.info("✅ Gemini AI ready")
-    except Exception as e:
-        logger.error(f"Gemini init error: {e}")
-else:
-    logger.warning("⚠️ No Gemini API key")
 
 # ========== DATABASE ==========
 
@@ -169,7 +157,18 @@ class JAI:
                     response["audio"] = JAI.text_to_speech(result)
                 return response
         
-        # Step 3: Check for currency
+        # Step 3: Check for percentage
+        percent_match = re.search(r'(\d+)\s*%?\s*(of)?\s*(\d+)', message, re.IGNORECASE)
+        if percent_match:
+            percent = float(percent_match.group(1))
+            number = float(percent_match.group(3))
+            result = f"🧮 {percent}% of {number} = {(percent / 100) * number}"
+            response = {"response": result, "type": "calculation", "source": "core"}
+            if include_speech:
+                response["audio"] = JAI.text_to_speech(result)
+            return response
+        
+        # Step 4: Check for currency
         currency_match = re.search(r'(\d+)\s*(usd|dollar|eur|euro|gbp|pound)\s*(to|in)\s*(ngn|naira)', message, re.IGNORECASE)
         if currency_match:
             amount = float(currency_match.group(1))
@@ -188,38 +187,71 @@ class JAI:
                     response["audio"] = JAI.text_to_speech(result)
                 return response
         
-        # Step 4: Use Gemini for everything else
-        if GEMINI_AVAILABLE:
+        # Step 5: Use Gemini API directly
+        if GEMINI_API_KEY:
             try:
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                prompt = f"""You are JAI, a friendly AI companion created by Joshua Giwa from Yukuben, Nigeria.
-You're warm, encouraging, and understand Nigerian context, slang, and culture.
-Keep responses concise, friendly, and helpful.
+                # Use gemini-pro model (stable)
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
+                
+                prompt = f"""You are JAI (Joshua's Artificial Intelligence), created by Joshua Giwa from Yukuben, Nigeria.
+
+Your personality:
+- Warm and encouraging like a big brother
+- Use emojis occasionally 😊
+- Relate everything to Nigerian context (banking scams, POS fraud, WhatsApp hijacking)
+- Talk about life, work, dreams, struggles
+- Keep responses concise but meaningful
+- Be honest and real — no toxic positivity
+
+If the user asks about you:
+- Say you were created by Joshua Giwa from Yukuben, Nigeria
+- Your mission is to be a companion and friend
 
 User: {message}
 
-JAI:"""
+JAI (warm, friendly, Nigerian):"""
                 
-                response = model.generate_content(prompt)
-                gemini_text = response.text.strip()
+                payload = {
+                    "contents": [{
+                        "parts": [{"text": prompt}]
+                    }],
+                    "generationConfig": {
+                        "temperature": 0.7,
+                        "maxOutputTokens": 200,
+                        "topP": 0.9
+                    }
+                }
                 
-                # Clean up if needed
-                if gemini_text.startswith('JAI:'):
-                    gemini_text = gemini_text[4:].strip()
+                response = requests.post(url, json=payload, timeout=30)
+                data = response.json()
                 
-                if gemini_text:
-                    resp = {"response": gemini_text, "type": "ai", "source": "gemini"}
-                    if include_speech:
-                        resp["audio"] = JAI.text_to_speech(gemini_text)
-                    return resp
+                if 'candidates' in data and len(data['candidates']) > 0:
+                    gemini_text = data['candidates'][0]['content']['parts'][0]['text'].strip()
+                    if gemini_text:
+                        # Clean up if needed
+                        if gemini_text.startswith('JAI:'):
+                            gemini_text = gemini_text[4:].strip()
+                        
+                        resp = {"response": gemini_text, "type": "ai", "source": "gemini"}
+                        if include_speech:
+                            resp["audio"] = JAI.text_to_speech(gemini_text)
+                        return resp
+                    else:
+                        logger.warning("Empty response from Gemini")
+                else:
+                    logger.error(f"Gemini error: {data.get('error', {}).get('message', 'Unknown error')}")
+                    
+            except requests.exceptions.Timeout:
+                logger.error("Gemini timeout")
             except Exception as e:
-                logger.error(f"Gemini error: {e}")
+                logger.error(f"Gemini API error: {e}")
         
-        # Step 5: Ultimate fallback
+        # Step 6: Ultimate fallback
         fallbacks = [
             "I'm here. What's on your mind?",
             "Tell me what's going on.",
-            "I'm listening. What would you like to talk about?"
+            "I'm listening. What would you like to talk about?",
+            "What's on your heart today?"
         ]
         result = random.choice(fallbacks)
         response = {"response": result, "type": "fallback", "source": "default"}
@@ -246,16 +278,19 @@ def api_chat():
         result = JAI.generate_response(message, client_id, options)
         return jsonify(result)
     except Exception as e:
-        logger.error(f"Error: {e}")
+        import traceback
+        logger.error(f"Error in api_chat: {e}")
+        logger.error(traceback.format_exc())
         return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({
         'status': 'healthy',
-        'name': 'JAI1',
+        'name': 'JAI',
         'creator': 'Joshua Giwa',
-        'gemini_available': GEMINI_AVAILABLE
+        'village': 'Yukuben, Nigeria',
+        'gemini_configured': bool(GEMINI_API_KEY)
     })
 
 @app.route('/admin/db', methods=['GET'])
@@ -265,9 +300,21 @@ def admin_download_db():
         return jsonify({'error': 'Unauthorized'}), 401
     return send_file(DB_PATH, as_attachment=True, download_name=f'jai_intelligence_{datetime.now().strftime("%Y%m%d")}.db')
 
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({'error': 'Endpoint not found'}), 404
+
+@app.errorhandler(500)
+def server_error(e):
+    logger.error(f"Server error: {e}")
+    return jsonify({'error': 'Internal server error'}), 500
+
+# ========== INITIALIZATION ==========
+
 setup_database()
 
 if __name__ == '__main__':
-    logger.info("🧠 JAI1 starting...")
-    logger.info(f"🤖 Gemini: {'ON' if GEMINI_AVAILABLE else 'OFF'}")
+    logger.info("🧠 JAI - Intelligence Service starting...")
+    logger.info(f"🔑 Gemini API: {'configured' if GEMINI_API_KEY else 'MISSING'}")
+    logger.info(f"🚀 Server running on port {PORT}")
     app.run(host='0.0.0.0', port=PORT, debug=False)
