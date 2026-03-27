@@ -1,5 +1,6 @@
 """JAI1 - Intelligence Service
 Uses JAI's rule-based personality files.
+No lessons — pure conversation.
 """
 
 import os
@@ -50,6 +51,7 @@ def setup_database():
     conn = get_db()
     cur = conn.cursor()
     
+    # Only create taught and suggestions tables (no lessons)
     cur.execute('''
         CREATE TABLE IF NOT EXISTS taught (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,28 +77,6 @@ def setup_database():
     conn.commit()
     conn.close()
     logger.info("✅ Database ready")
-
-# ========== CURRENT LESSON ==========
-
-current_lesson_id = None
-current_lesson_content = ""
-current_lesson_title = "No lesson uploaded"
-
-def load_current_lesson():
-    global current_lesson_id, current_lesson_content, current_lesson_title
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('SELECT id, title, content FROM lessons WHERE is_active = 1 ORDER BY uploaded_at DESC LIMIT 1')
-    lesson = cur.fetchone()
-    if lesson:
-        current_lesson_id = lesson['id']
-        current_lesson_content = lesson['content']
-        current_lesson_title = lesson['title']
-    else:
-        current_lesson_id = None
-        current_lesson_content = ""
-        current_lesson_title = "No lesson uploaded"
-    conn.close()
 
 # ========== JAI HANDLER ==========
 
@@ -186,7 +166,7 @@ class JAI:
             return response
         
         # Step 4: Use JAIPersonality for conversation
-        personality_response = JAIPersonality.get_response(message, current_lesson_content, current_lesson_title)
+        personality_response = JAIPersonality.get_response(message, "", "No lesson")
         
         response = {"response": personality_response, "type": "personality", "source": "jai_responses"}
         if include_speech:
@@ -228,7 +208,6 @@ def admin_download_db():
     return send_file(DB_PATH, as_attachment=True, download_name=f'jai_intelligence_{datetime.now().strftime("%Y%m%d")}.db')
 
 setup_database()
-load_current_lesson()
 
 if __name__ == '__main__':
     logger.info("🗣️ JAI starting...")
