@@ -1,7 +1,5 @@
 flask==2.3.3
 flask-cors==4.0.0
 gunicorn==21.2.0
-textblob==0.17.1
-nltk==3.8.1
 gTTS==2.3.2
-https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
+google-generativeai==0.3.0
