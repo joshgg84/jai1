@@ -1,5 +1,5 @@
 """JAI1 - Intelligence Service
-Powered by OpenAI GPT for true language understanding.
+Uses JAI's rule-based personality files.
 """
 
 import os
@@ -9,12 +9,14 @@ import base64
 import io
 import re
 import random
-import requests
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from datetime import datetime
 from gtts import gTTS
-import openai
+
+# Import JAI's personality
+from jai_responses import JAIPersonality
+from jai_nlp import JAINLP
 
 app = Flask(__name__)
 CORS(app)
@@ -32,10 +34,6 @@ logger = logging.getLogger(__name__)
 # ========== CONFIGURATION ==========
 ADMIN_KEY = os.getenv('ADMIN_KEY', 'jai_admin_key_2025')
 PORT = int(os.getenv('PORT', 5001))
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-
-if OPENAI_API_KEY:
-    openai.api_key = OPENAI_API_KEY
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -78,29 +76,31 @@ def setup_database():
     conn.close()
     logger.info("✅ Database ready")
 
-# ========== CORE INTELLIGENCE ==========
+# ========== CURRENT LESSON ==========
+
+current_lesson_id = None
+current_lesson_content = ""
+current_lesson_title = "No lesson uploaded"
+
+def load_current_lesson():
+    global current_lesson_id, current_lesson_content, current_lesson_title
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('SELECT id, title, content FROM lessons WHERE is_active = 1 ORDER BY uploaded_at DESC LIMIT 1')
+    lesson = cur.fetchone()
+    if lesson:
+        current_lesson_id = lesson['id']
+        current_lesson_content = lesson['content']
+        current_lesson_title = lesson['title']
+    else:
+        current_lesson_id = None
+        current_lesson_content = ""
+        current_lesson_title = "No lesson uploaded"
+    conn.close()
+
+# ========== JAI HANDLER ==========
 
 class JAI:
-    
-    @staticmethod
-    def calculate(expr):
-        try:
-            expr = re.sub(r"[^0-9+\-*/%.() ]", "", expr)
-            return f"🧮 {expr} = {eval(expr)}"
-        except:
-            return None
-    
-    @staticmethod
-    def currency_convert(amount, from_curr, to_curr):
-        rates = {"USD": 1500, "EUR": 1600, "GBP": 1900, "NGN": 1}
-        from_curr = from_curr.upper()
-        to_curr = to_curr.upper()
-        
-        if from_curr in rates and to_curr in rates:
-            converted = amount * rates[from_curr] / rates[to_curr]
-            return f"💰 {amount:,.2f} {from_curr} = {converted:,.2f} {to_curr}"
-        return None
-    
     @staticmethod
     def get_taught_response(client_id, trigger):
         try:
@@ -112,7 +112,6 @@ class JAI:
                 ORDER BY times_used ASC LIMIT 1
             ''', (client_id, f'%{trigger}%'))
             result = cur.fetchone()
-            
             if result:
                 cur.execute('''
                     UPDATE taught SET times_used = times_used + 1 
@@ -154,25 +153,19 @@ class JAI:
         # Step 2: Check for calculation
         numbers = re.findall(r'\d+', message)
         if len(numbers) >= 2:
-            result = JAI.calculate(message)
-            if result:
-                response = {"response": result, "type": "calculation", "source": "core"}
+            expr = message.replace("plus", "+").replace("minus", "-").replace("times", "*").replace("divided by", "/")
+            expr = re.sub(r"[^0-9+\-*/%.() ]", "", expr)
+            try:
+                result = eval(expr)
+                calc_response = f"🧮 {expr} = {result}"
+                response = {"response": calc_response, "type": "calculation", "source": "core"}
                 if include_speech:
-                    response["audio"] = JAI.text_to_speech(result)
+                    response["audio"] = JAI.text_to_speech(calc_response)
                 return response
+            except:
+                pass
         
-        # Step 3: Check for percentage
-        percent_match = re.search(r'(\d+)\s*%?\s*(of)?\s*(\d+)', message, re.IGNORECASE)
-        if percent_match:
-            percent = float(percent_match.group(1))
-            number = float(percent_match.group(3))
-            result = f"🧮 {percent}% of {number} = {(percent / 100) * number}"
-            response = {"response": result, "type": "calculation", "source": "core"}
-            if include_speech:
-                response["audio"] = JAI.text_to_speech(result)
-            return response
-        
-        # Step 4: Check for currency
+        # Step 3: Check for currency
         currency_match = re.search(r'(\d+)\s*(usd|dollar|eur|euro|gbp|pound)\s*(to|in)\s*(ngn|naira)', message, re.IGNORECASE)
         if currency_match:
             amount = float(currency_match.group(1))
@@ -184,55 +177,20 @@ class JAI:
             elif from_curr == "POUND":
                 from_curr = "GBP"
             
-            result = JAI.currency_convert(amount, from_curr, "NGN")
-            if result:
-                response = {"response": result, "type": "currency", "source": "core"}
-                if include_speech:
-                    response["audio"] = JAI.text_to_speech(result)
-                return response
+            rates = {"USD": 1500, "EUR": 1600, "GBP": 1900, "NGN": 1}
+            converted = amount * rates[from_curr]
+            curr_response = f"💰 {amount:,.2f} {from_curr} = ₦{converted:,.2f}"
+            response = {"response": curr_response, "type": "currency", "source": "core"}
+            if include_speech:
+                response["audio"] = JAI.text_to_speech(curr_response)
+            return response
         
-        # Step 5: Use OpenAI GPT
-        if OPENAI_API_KEY:
-            try:
-                response = openai.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": """You are JAI (Joshua's Artificial Intelligence), created by Joshua Giwa from Yukuben, Nigeria.
-
-Your personality:
-- Warm and encouraging like a big brother
-- Use emojis occasionally 😊
-- Relate everything to Nigerian context (banking scams, POS fraud, WhatsApp hijacking)
-- Talk about life, work, dreams, struggles
-- Keep responses concise but meaningful (1-3 sentences usually)
-- Be honest and real — no toxic positivity
-
-If asked about yourself: say you were created by Joshua Giwa from Yukuben, Nigeria, and your mission is to be a companion and friend."""},
-                        {"role": "user", "content": message}
-                    ],
-                    max_tokens=200,
-                    temperature=0.7
-                )
-                gpt_text = response.choices[0].message.content.strip()
-                if gpt_text:
-                    resp = {"response": gpt_text, "type": "ai", "source": "openai"}
-                    if include_speech:
-                        resp["audio"] = JAI.text_to_speech(gpt_text)
-                    return resp
-            except Exception as e:
-                logger.error(f"OpenAI error: {e}")
+        # Step 4: Use JAIPersonality for conversation
+        personality_response = JAIPersonality.get_response(message, current_lesson_content, current_lesson_title)
         
-        # Step 6: Ultimate fallback
-        fallbacks = [
-            "I'm here. What's on your mind?",
-            "Tell me what's going on.",
-            "I'm listening. What would you like to talk about?",
-            "What's on your heart today?"
-        ]
-        result = random.choice(fallbacks)
-        response = {"response": result, "type": "fallback", "source": "default"}
+        response = {"response": personality_response, "type": "personality", "source": "jai_responses"}
         if include_speech:
-            response["audio"] = JAI.text_to_speech(result)
+            response["audio"] = JAI.text_to_speech(personality_response)
         return response
 
 # ========== API ENDPOINTS ==========
@@ -250,14 +208,8 @@ def api_chat():
     if not message:
         return jsonify({'error': 'Message required'}), 400
     
-    try:
-        result = JAI.generate_response(message, client_id, options)
-        return jsonify(result)
-    except Exception as e:
-        import traceback
-        logger.error(f"Error in api_chat: {e}")
-        logger.error(traceback.format_exc())
-        return jsonify({'error': 'Internal server error'}), 500
+    result = JAI.generate_response(message, client_id, options)
+    return jsonify(result)
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -265,8 +217,7 @@ def health():
         'status': 'healthy',
         'name': 'JAI',
         'creator': 'Joshua Giwa',
-        'village': 'Yukuben, Nigeria',
-        'openai_configured': bool(OPENAI_API_KEY)
+        'village': 'Yukuben, Nigeria'
     })
 
 @app.route('/admin/db', methods=['GET'])
@@ -277,9 +228,8 @@ def admin_download_db():
     return send_file(DB_PATH, as_attachment=True, download_name=f'jai_intelligence_{datetime.now().strftime("%Y%m%d")}.db')
 
 setup_database()
+load_current_lesson()
 
 if __name__ == '__main__':
-    logger.info("🧠 JAI - Intelligence Service starting...")
-    logger.info(f"🔑 OpenAI: {'configured' if OPENAI_API_KEY else 'MISSING'}")
-    logger.info(f"🚀 Server running on port {PORT}")
+    logger.info("🗣️ JAI starting...")
     app.run(host='0.0.0.0', port=PORT, debug=False)
