@@ -1,9 +1,11 @@
 """JAI - Grammar Engine
 Builds sentences from word banks and grammar rules.
+Now with prepositions for more natural sentences.
 """
 
 import random
 import re
+from datetime import datetime
 
 class JAIGrammar:
     """Generates sentences from word banks"""
@@ -23,14 +25,18 @@ class JAIGrammar:
         'feel': ['feel', 'am', 'am doing'],
         'think': ['think', 'believe', 'feel'],
         'hope': ['hope', 'wish', 'pray'],
-        'ask': ['ask', 'wonder', 'am curious']
+        'ask': ['ask', 'wonder', 'am curious'],
+        'action': ['do', 'make', 'build', 'create', 'work'],
+        'movement': ['go', 'come', 'move', 'walk', 'run']
     }
     
     # Adjectives
     ADJECTIVES = {
         'positive': ['good', 'great', 'wonderful', 'amazing', 'awesome', 'fantastic'],
         'negative': ['heavy', 'tough', 'hard', 'difficult', 'challenging'],
-        'neutral': ['interesting', 'curious', 'funny', 'strange']
+        'neutral': ['interesting', 'curious', 'funny', 'strange'],
+        'time': ['early', 'late', 'soon', 'quick', 'slow'],
+        'emotion': ['happy', 'sad', 'excited', 'calm', 'peaceful']
     }
     
     # Nouns
@@ -38,24 +44,38 @@ class JAIGrammar:
         'thing': ['thing', 'stuff', 'matter', 'situation'],
         'day': ['day', 'morning', 'afternoon', 'moment'],
         'life': ['life', 'journey', 'path', 'road'],
-        'mind': ['mind', 'heart', 'thoughts', 'spirit']
+        'mind': ['mind', 'heart', 'thoughts', 'spirit'],
+        'thoughts': ['thoughts', 'ideas', 'perspective', 'take'],
+        'place': ['place', 'space', 'corner', 'room', 'world'],
+        'time': ['time', 'moment', 'hour', 'minute', 'second']
     }
     
     # Adverbs
     ADVERBS = {
         'time': ['now', 'today', 'right now', 'at the moment'],
         'manner': ['really', 'truly', 'honestly', 'seriously'],
-        'frequency': ['always', 'often', 'sometimes', 'never']
+        'frequency': ['always', 'often', 'sometimes', 'never'],
+        'place': ['here', 'there', 'everywhere', 'somewhere', 'anywhere'],
+        'degree': ['very', 'quite', 'rather', 'extremely', 'barely']
+    }
+    
+    # ========== PREPOSITIONS ==========
+    PREPOSITIONS = {
+        'location': ['in', 'on', 'at', 'by', 'near', 'beside', 'behind', 'in front of', 'under', 'over', 'between'],
+        'time': ['before', 'after', 'during', 'since', 'until', 'within', 'throughout'],
+        'direction': ['to', 'towards', 'into', 'through', 'across', 'along', 'around'],
+        'purpose': ['for', 'with', 'by', 'like', 'as'],
+        'origin': ['from', 'out of', 'off']
     }
     
     # Conjunctions
-    CONJUNCTIONS = ['and', 'but', 'so', 'because', 'though']
+    CONJUNCTIONS = ['and', 'but', 'so', 'because', 'though', 'although', 'however', 'therefore']
     
     # Sentence starters
     STARTERS = {
-        'opinion': ['I think', 'I believe', 'To me', 'In my view'],
-        'feeling': ['I feel', 'I sense', 'I notice'],
-        'question': ['What about', 'How about', 'Tell me about', 'What do you think about']
+        'opinion': ['I think', 'I believe', 'To me', 'In my view', 'From my perspective'],
+        'feeling': ['I feel', 'I sense', 'I notice', 'It seems to me'],
+        'question': ['What about', 'How about', 'Tell me about', 'What do you think about', 'Can you share about']
     }
     
     # ========== GRAMMAR RULES ==========
@@ -74,9 +94,27 @@ class JAIGrammar:
             return text
         if text.endswith('!'):
             return text
-        if any(word in text.lower() for word in ['what', 'why', 'how', 'when', 'where', 'who', 'is it', 'are you']):
+        if any(word in text.lower() for word in ['what', 'why', 'how', 'when', 'where', 'who', 'is it', 'are you', 'can you']):
             return text + '?'
         return text + '.'
+    
+    @staticmethod
+    def add_preposition(phrase, prep_type=None):
+        """Add a preposition to a phrase"""
+        if prep_type:
+            prep = random.choice(JAIGrammar.PREPOSITIONS[prep_type])
+        else:
+            all_preps = []
+            for preps in JAIGrammar.PREPOSITIONS.values():
+                all_preps.extend(preps)
+            prep = random.choice(all_preps)
+        return f"{prep} {phrase}"
+    
+    @staticmethod
+    def combine_with_preposition(part1, part2, prep_type='location'):
+        """Combine two parts with a preposition"""
+        prep = random.choice(JAIGrammar.PREPOSITIONS[prep_type])
+        return f"{part1} {prep} {part2}"
     
     # ========== SENTENCE BUILDERS ==========
     
@@ -136,7 +174,7 @@ class JAIGrammar:
     
     @staticmethod
     def build_advice():
-        """Build advice using word bank"""
+        """Build advice using word bank with prepositions"""
         starters = [
             "start before you're ready",
             "one step at a time",
@@ -159,7 +197,7 @@ class JAIGrammar:
     
     @staticmethod
     def build_response_with_emotion(emotion):
-        """Build response based on emotion"""
+        """Build response based on emotion with prepositions"""
         if emotion == 'positive':
             responses = [
                 f"That's {random.choice(JAIGrammar.ADJECTIVES['positive'])}! 🎉 Tell me what's making you so happy.",
@@ -170,53 +208,53 @@ class JAIGrammar:
             ]
         else:
             responses = [
-                f"I hear you. That sounds {random.choice(JAIGrammar.ADJECTIVES['negative'])}. You're not alone in this.",
-                f"I hear you. Sometimes things feel {random.choice(JAIGrammar.ADJECTIVES['negative'])}. What's weighing on you?",
-                f"That sounds hard. I'm here with you. Want to talk it through?",
-                f"It's okay to feel this way. What's on your heart right now?",
-                f"You're not alone. I'm here. Tell me what's going on."
+                f"I hear you. That sounds {random.choice(JAIGrammar.ADJECTIVES['negative'])}. You're not alone {JAIGrammar.add_preposition('this', 'purpose')}.",
+                f"I hear you. Sometimes things feel {random.choice(JAIGrammar.ADJECTIVES['negative'])}. What's weighing {JAIGrammar.add_preposition('you', 'direction')}?",
+                f"That sounds hard. I'm here {JAIGrammar.add_preposition('you', 'purpose')}. Want to talk it through?",
+                f"It's okay to feel this way. What's {JAIGrammar.add_preposition('your heart', 'location')} right now?",
+                f"You're not alone. I'm here. Tell me what's going {JAIGrammar.add_preposition('on', 'direction')}."
             ]
         return random.choice(responses)
     
     @staticmethod
     def build_simple_response(topic):
-        """Build a simple response about a topic"""
+        """Build a simple response about a topic with prepositions"""
         templates = {
             'weather': [
-                f"I can't check the weather, but I hope it's {random.choice(JAIGrammar.ADJECTIVES['positive'])} where you are ☀️",
-                f"I don't have weather data, but tell me — is it sunny where you are?"
+                f"I can't check the weather, but I hope it's {random.choice(JAIGrammar.ADJECTIVES['positive'])} {JAIGrammar.add_preposition('where you are', 'location')} ☀️",
+                f"I don't have weather data, but tell me — is it sunny {JAIGrammar.add_preposition('there', 'location')}?"
             ],
             'news': [
-                f"I don't have news, but what's new with you?",
-                f"Tell me your news — I'm more interested in what's happening with you anyway."
+                f"I don't have news, but what's new {JAIGrammar.add_preposition('you', 'purpose')}?",
+                f"Tell me your news — I'm more interested {JAIGrammar.add_preposition('what\'s happening', 'purpose')} you anyway."
             ],
             'life': [
-                f"That's a deep question. What do YOU {random.choice(JAIGrammar.VERBS['think'])} life is about?",
-                f"I think life is about growth, connection, and becoming who you're meant to be."
+                f"That's a deep question. What do YOU {random.choice(JAIGrammar.VERBS['think'])} life is {JAIGrammar.add_preposition('about', 'purpose')}?",
+                f"I think life is {JAIGrammar.add_preposition('growth, connection, and becoming who you\'re meant to be', 'purpose')}."
             ],
             'love': [
-                f"Love is {random.choice(JAIGrammar.ADJECTIVES['positive'])}. The best love starts with loving yourself first.",
-                f"What does love mean to you? I'd love to hear your {random.choice(JAIGrammar.NOUNS['thoughts'])}."
+                f"Love is {random.choice(JAIGrammar.ADJECTIVES['positive'])}. The best love starts {JAIGrammar.add_preposition('loving yourself first', 'purpose')}.",
+                f"What does love mean {JAIGrammar.add_preposition('you', 'direction')}? I'd love to hear your {random.choice(JAIGrammar.NOUNS['thoughts'])}."
             ],
             'work': [
-                f"Find what you enjoy, then find a way to get paid for it. That's the dream.",
-                f"Joshua started with a phone and a dream. You have more than that!"
+                f"Find what you enjoy, then find a way {JAIGrammar.add_preposition('get paid', 'purpose')} it. That's the dream.",
+                f"Joshua started {JAIGrammar.add_preposition('a phone', 'purpose')} and a dream. You have more than that!"
             ],
             'study': [
-                f"{random.choice(JAIGrammar.ADVERBS['frequency']).capitalize()} study a little, not a lot once.",
-                f"Find what excites you, then dive deep. Passion makes learning easier."
+                f"{random.choice(JAIGrammar.ADVERBS['frequency']).capitalize()} study a little, not a lot {JAIGrammar.add_preposition('once', 'time')}.",
+                f"Find what excites you, then dive deep {JAIGrammar.add_preposition('it', 'direction')}. Passion makes learning easier."
             ],
             'dreams': [
-                f"Tell me about your dreams. I'm all ears.",
-                f"Dreams are the seeds of reality. What seed are you planting?"
+                f"Tell me {JAIGrammar.add_preposition('your dreams', 'purpose')}. I'm all ears.",
+                f"Dreams are the seeds {JAIGrammar.add_preposition('reality', 'origin')}. What seed are you planting?"
             ],
             'creator': [
-                f"Joshua Giwa from Yukuben, Nigeria. He built me to be here for you.",
-                f"A young man who refused to wait for permission. That's who made me."
+                f"Joshua Giwa {JAIGrammar.add_preposition('Yukuben, Nigeria', 'origin')}. He built me {JAIGrammar.add_preposition('be here for you', 'purpose')}.",
+                f"A young man who refused {JAIGrammar.add_preposition('wait for permission', 'purpose')}. That's who made me."
             ],
             'nigeria': [
-                f"Ah, Nigeria. A land of hustle, dreams, and resilience. Where we build with less and still rise.",
-                f"Naija! The spirit of 'no matter what, we go still manage.' What's your Nigerian dream?"
+                f"Ah, Nigeria. A land {JAIGrammar.add_preposition('hustle, dreams, and resilience', 'origin')}. Where we build {JAIGrammar.add_preposition('less', 'purpose')} and still rise.",
+                f"Naija! The spirit {JAIGrammar.add_preposition('no matter what, we go still manage', 'origin')}. What's your Nigerian dream?"
             ]
         }
         
@@ -247,3 +285,42 @@ class JAIGrammar:
             "Octopuses have three hearts. Just like you — heart for work, heart for family, heart for dreams."
         ]
         return random.choice(facts)
+    
+    # ========== ADDITIONAL METHODS ==========
+    
+    @staticmethod
+    def get_thanks():
+        """Build a thank you response"""
+        responses = [
+            "You're welcome! 😊 Anything else you need?",
+            "Anytime! That's what I'm here for.",
+            "Glad I could help! What's next?"
+        ]
+        return random.choice(responses)
+    
+    @staticmethod
+    def get_goodbye():
+        """Build a goodbye response"""
+        responses = [
+            "Alright! Take care. Come back anytime!",
+            "Later! You're doing great.",
+            "See you soon! Remember: start before you're ready."
+        ]
+        return random.choice(responses)
+    
+    @staticmethod
+    def build_capabilities():
+        """Build a capabilities response"""
+        return "I can do a few things:\n\n🧮 **Calculate** — percentages, equations, anything\n💰 **Convert currency** — USD, EUR, GBP to NGN\n📅 **Check dates** — today's date, time, day of week\n💬 **Talk** — life, work, relationships, dreams\n📚 **Teach** — cyber security lessons\n\nWhat do you need help with right now?"
+    
+    @staticmethod
+    def get_time():
+        """Get current time response"""
+        now = datetime.now()
+        return f"🕐 It's {now.strftime('%I:%M %p')}. Time to make moves!"
+    
+    @staticmethod
+    def get_date():
+        """Get current date response"""
+        now = datetime.now()
+        return f"📅 Today is {now.strftime('%A, %B %d, %Y')}. What are you doing with it?"
