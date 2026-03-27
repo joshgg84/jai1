@@ -1,6 +1,6 @@
 """JAI - Joshua's Artificial Intelligence
 Your companion, coach, friend, calculator, and calendar.
-Now with NLP for true language understanding.
+Now with centralized intent detection and handling.
 """
 
 import random
@@ -12,6 +12,7 @@ from jai_casual import JAICasual
 from jai_natural import JAINatural
 from jai_conversation import JAIConversational
 from jai_advanced_nlp import JAIAdvancedNLP
+from jai_intent import JAIIntent
 
 logger = logging.getLogger(__name__)
 
@@ -74,32 +75,10 @@ class JAIPersonality:
                     "Happy to hear that. What are you up to?"
                 ])
         
-        # ========== INTENT-BASED RESPONSES ==========
-        
-        # Greeting
-        if intent == 'greeting':
-            return random.choice([
-                "Hey! What's good? How are you doing?",
-                "Yo! What's happening? You okay today?",
-                "Hey there! What's the vibe?",
-                "Hello! Good to see you. What's on your mind?"
-            ])
-        
-        # Thank you
-        if intent == 'thanks':
-            return random.choice([
-                "You're welcome! 😊 Anything else you need?",
-                "Anytime! That's what I'm here for.",
-                "Glad I could help! What's next?"
-            ])
-        
-        # Goodbye
-        if intent == 'goodbye':
-            return random.choice([
-                "Alright! Take care. Come back anytime!",
-                "Later! You're doing great.",
-                "See you soon! Remember: start before you're ready."
-            ])
+        # ========== USE JAIINTENT FOR RESPONSES ==========
+        intent_response = JAIIntent.get_response(intent)
+        if intent_response:
+            return intent_response
         
         # ========== SENTIMENT INTENSITY ==========
         if analysis and analysis['sentiment']['emotion'] in ['positive', 'negative']:
@@ -110,38 +89,6 @@ class JAIPersonality:
             
             if polarity < -0.6:
                 return "That sounds really heavy. I'm here with you. Want to talk it through? No pressure."
-        
-        # Positive emotion detection
-        if intent == 'positive_emotion' and analysis:
-            polarity = analysis['sentiment']['polarity']
-            if polarity > 0.5:
-                return "That's amazing! 🎉 Tell me what's making you so happy. I want to celebrate with you!"
-            return "That's great to hear! 😊 What's been going well? Share it with me."
-        
-        # Negative emotion detection
-        if intent == 'negative_emotion' and analysis:
-            polarity = analysis['sentiment']['polarity']
-            if polarity < -0.5:
-                return "I hear you. That sounds really heavy. You're not alone in this. Want to talk about what's going on?"
-            return "I hear you. Sometimes things feel tough. What's weighing on you right now? I'm here to listen."
-        
-        # Ask about creator
-        if intent == 'ask_creator':
-            return "I was built by Joshua Giwa from Yukuben, Nigeria. He's a web developer, a dreamer, and someone who believes people are more than their struggles. He built me to be here for you. What's on your heart today?"
-        
-        # Ask about capabilities
-        if intent == 'ask_capabilities':
-            return "I can do a few things:\n\n🧮 **Calculate** — percentages, equations, anything\n💰 **Convert currency** — USD, EUR, GBP to NGN\n📅 **Check dates** — today's date, time, day of week\n💬 **Talk** — life, work, relationships, dreams\n📚 **Teach** — cyber security lessons\n\nWhat do you need help with right now?"
-        
-        # Ask about time/date
-        if intent == 'ask_date':
-            return f"📅 Today is {now.strftime('%A, %B %d, %Y')}. What are you doing with it?"
-        if intent == 'ask_time':
-            return f"🕐 It's {now.strftime('%I:%M %p')}. Time to make moves!"
-        
-        # Ask about calculation
-        if intent == 'ask_calculation':
-            return "Yes! 🧮 I can calculate anything. Just ask me like 'What's 15% of 200?' or '4+4'. What do you want to calculate?"
         
         # ========== QUESTION HANDLING ==========
         if analysis and analysis['has_question'] and intent == 'ask_general':
@@ -289,7 +236,6 @@ class JAIPersonality:
                     if p["likely_referent"]:
                         return f"When you said '{p['pronoun']}', were you talking about {p['likely_referent']}? Tell me more about {p['likely_referent']}."
         except Exception as e:
-            # If advanced NLP fails, continue with regular responses
             pass
         
         # ========== CONTEXT FROM NOUN PHRASES ==========
@@ -325,11 +271,11 @@ class JAIPersonality:
                 ]
                 return random.choice(follow_ups)
         
-        # ========== DYNAMIC RESPONSE GENERATION (FIXED) ==========
+        # ========== DYNAMIC RESPONSE GENERATION ==========
         keywords = JAINLP.extract_keywords(message)
         if keywords:
             keyword_context = f" about {keywords[0]}" if keywords else ""
-            return f"{random.choice(['That is interesting', 'Tell me more', 'I hear you', 'That is real'])}{keyword_context}. {random.choice(['What else is on your mind', 'How are you feeling about that', 'What do you think', 'Tell me more'])}?"
+            return f"{random.choice(['That\'s interesting', 'Tell me more', 'I hear you', 'That\'s real'])}{keyword_context}. {random.choice(['What else is on your mind', 'How are you feeling about that', 'What do you think', 'Tell me more'])}?"
         
         # ========== DEFAULT ==========
         return random.choice([
