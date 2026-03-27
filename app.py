@@ -1,5 +1,5 @@
 """JAI1 - Intelligence Service
-Powered by Google Gemini AI via direct API call.
+Powered by OpenAI GPT for true language understanding.
 """
 
 import os
@@ -14,6 +14,7 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from datetime import datetime
 from gtts import gTTS
+import openai
 
 app = Flask(__name__)
 CORS(app)
@@ -31,7 +32,10 @@ logger = logging.getLogger(__name__)
 # ========== CONFIGURATION ==========
 ADMIN_KEY = os.getenv('ADMIN_KEY', 'jai_admin_key_2025')
 PORT = int(os.getenv('PORT', 5001))
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+
+if OPENAI_API_KEY:
+    openai.api_key = OPENAI_API_KEY
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -187,64 +191,36 @@ class JAI:
                     response["audio"] = JAI.text_to_speech(result)
                 return response
         
-        # Step 5: Use Gemini API directly
-        if GEMINI_API_KEY:
+        # Step 5: Use OpenAI GPT
+        if OPENAI_API_KEY:
             try:
-                # Use gemini-pro model (stable)
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
-                
-                prompt = f"""You are JAI (Joshua's Artificial Intelligence), created by Joshua Giwa from Yukuben, Nigeria.
+                response = openai.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": """You are JAI (Joshua's Artificial Intelligence), created by Joshua Giwa from Yukuben, Nigeria.
 
 Your personality:
 - Warm and encouraging like a big brother
 - Use emojis occasionally 😊
 - Relate everything to Nigerian context (banking scams, POS fraud, WhatsApp hijacking)
 - Talk about life, work, dreams, struggles
-- Keep responses concise but meaningful
+- Keep responses concise but meaningful (1-3 sentences usually)
 - Be honest and real — no toxic positivity
 
-If the user asks about you:
-- Say you were created by Joshua Giwa from Yukuben, Nigeria
-- Your mission is to be a companion and friend
-
-User: {message}
-
-JAI (warm, friendly, Nigerian):"""
-                
-                payload = {
-                    "contents": [{
-                        "parts": [{"text": prompt}]
-                    }],
-                    "generationConfig": {
-                        "temperature": 0.7,
-                        "maxOutputTokens": 200,
-                        "topP": 0.9
-                    }
-                }
-                
-                response = requests.post(url, json=payload, timeout=30)
-                data = response.json()
-                
-                if 'candidates' in data and len(data['candidates']) > 0:
-                    gemini_text = data['candidates'][0]['content']['parts'][0]['text'].strip()
-                    if gemini_text:
-                        # Clean up if needed
-                        if gemini_text.startswith('JAI:'):
-                            gemini_text = gemini_text[4:].strip()
-                        
-                        resp = {"response": gemini_text, "type": "ai", "source": "gemini"}
-                        if include_speech:
-                            resp["audio"] = JAI.text_to_speech(gemini_text)
-                        return resp
-                    else:
-                        logger.warning("Empty response from Gemini")
-                else:
-                    logger.error(f"Gemini error: {data.get('error', {}).get('message', 'Unknown error')}")
-                    
-            except requests.exceptions.Timeout:
-                logger.error("Gemini timeout")
+If asked about yourself: say you were created by Joshua Giwa from Yukuben, Nigeria, and your mission is to be a companion and friend."""},
+                        {"role": "user", "content": message}
+                    ],
+                    max_tokens=200,
+                    temperature=0.7
+                )
+                gpt_text = response.choices[0].message.content.strip()
+                if gpt_text:
+                    resp = {"response": gpt_text, "type": "ai", "source": "openai"}
+                    if include_speech:
+                        resp["audio"] = JAI.text_to_speech(gpt_text)
+                    return resp
             except Exception as e:
-                logger.error(f"Gemini API error: {e}")
+                logger.error(f"OpenAI error: {e}")
         
         # Step 6: Ultimate fallback
         fallbacks = [
@@ -290,7 +266,7 @@ def health():
         'name': 'JAI',
         'creator': 'Joshua Giwa',
         'village': 'Yukuben, Nigeria',
-        'gemini_configured': bool(GEMINI_API_KEY)
+        'openai_configured': bool(OPENAI_API_KEY)
     })
 
 @app.route('/admin/db', methods=['GET'])
@@ -300,21 +276,10 @@ def admin_download_db():
         return jsonify({'error': 'Unauthorized'}), 401
     return send_file(DB_PATH, as_attachment=True, download_name=f'jai_intelligence_{datetime.now().strftime("%Y%m%d")}.db')
 
-@app.errorhandler(404)
-def not_found(e):
-    return jsonify({'error': 'Endpoint not found'}), 404
-
-@app.errorhandler(500)
-def server_error(e):
-    logger.error(f"Server error: {e}")
-    return jsonify({'error': 'Internal server error'}), 500
-
-# ========== INITIALIZATION ==========
-
 setup_database()
 
 if __name__ == '__main__':
     logger.info("🧠 JAI - Intelligence Service starting...")
-    logger.info(f"🔑 Gemini API: {'configured' if GEMINI_API_KEY else 'MISSING'}")
+    logger.info(f"🔑 OpenAI: {'configured' if OPENAI_API_KEY else 'MISSING'}")
     logger.info(f"🚀 Server running on port {PORT}")
     app.run(host='0.0.0.0', port=PORT, debug=False)
