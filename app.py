@@ -1,6 +1,5 @@
-"""JAI1 - Pure Intelligence Service
-Unified API: One endpoint for all intelligence.
-Uses Gemini AI for true language understanding with fallback to rule-based.
+"""JAI1 - Intelligence Service
+Powered by Google Gemini AI for true understanding.
 """
 
 import os
@@ -14,11 +13,7 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from datetime import datetime
 from gtts import gTTS
-
-# Import JAI's rule-based personality
-from jai_responses import JAIPersonality
-from jai_nlp import JAINLP
-from jai_gemini import JAIGemini
+import google.generativeai as genai
 
 app = Flask(__name__)
 CORS(app)
@@ -46,16 +41,13 @@ DB_PATH = os.path.join(DATA_DIR, 'jai_intelligence.db')
 GEMINI_AVAILABLE = False
 if GEMINI_API_KEY:
     try:
-        GEMINI_AVAILABLE = JAIGemini.initialize(GEMINI_API_KEY)
-        if GEMINI_AVAILABLE:
-            logger.info("✅ Gemini AI initialized successfully")
-        else:
-            logger.warning("⚠️ Gemini initialization failed")
+        genai.configure(api_key=GEMINI_API_KEY)
+        GEMINI_AVAILABLE = True
+        logger.info("✅ Gemini AI ready")
     except Exception as e:
         logger.error(f"Gemini init error: {e}")
-        GEMINI_AVAILABLE = False
 else:
-    logger.warning("⚠️ No Gemini API key found. Using rule-based responses only.")
+    logger.warning("⚠️ No Gemini API key")
 
 # ========== DATABASE ==========
 
@@ -92,7 +84,7 @@ def setup_database():
     
     conn.commit()
     conn.close()
-    logger.info("✅ JAI1 Database ready")
+    logger.info("✅ Database ready")
 
 # ========== CORE INTELLIGENCE ==========
 
@@ -102,8 +94,7 @@ class JAI:
     def calculate(expr):
         try:
             expr = re.sub(r"[^0-9+\-*/%.() ]", "", expr)
-            result = eval(expr)
-            return f"🧮 {expr} = {result}"
+            return f"🧮 {expr} = {eval(expr)}"
         except:
             return None
     
@@ -144,22 +135,6 @@ class JAI:
         return None
     
     @staticmethod
-    def save_suggestion(client_id, trigger, response):
-        try:
-            conn = get_db()
-            cur = conn.cursor()
-            cur.execute('''
-                INSERT INTO suggestions (client_id, trigger, suggested_response, status)
-                VALUES (?, ?, ?, 'pending')
-            ''', (client_id, trigger, response))
-            conn.commit()
-            conn.close()
-            return True
-        except Exception as e:
-            logger.error(f"DB error: {e}")
-            return False
-    
-    @staticmethod
     def text_to_speech(text):
         try:
             tts = gTTS(text=text, lang='en', slow=False)
@@ -173,18 +148,13 @@ class JAI:
     
     @staticmethod
     def generate_response(message, client_id="unknown", options=None):
-        """Unified intelligence — returns everything"""
         options = options or {}
         include_speech = options.get('speech', False)
         
-        # Step 1: Check taught response (database)
+        # Step 1: Check taught response
         taught = JAI.get_taught_response(client_id, message)
         if taught:
-            response = {
-                "response": taught,
-                "type": "taught",
-                "source": "memory"
-            }
+            response = {"response": taught, "type": "taught", "source": "memory"}
             if include_speech:
                 response["audio"] = JAI.text_to_speech(taught)
             return response
@@ -199,18 +169,7 @@ class JAI:
                     response["audio"] = JAI.text_to_speech(result)
                 return response
         
-        # Step 3: Check for percentage
-        percent_match = re.search(r'(\d+)\s*%?\s*(of)?\s*(\d+)', message, re.IGNORECASE)
-        if percent_match:
-            percent = float(percent_match.group(1))
-            number = float(percent_match.group(3))
-            result = f"🧮 {percent}% of {number} = {(percent / 100) * number}"
-            response = {"response": result, "type": "calculation", "source": "core"}
-            if include_speech:
-                response["audio"] = JAI.text_to_speech(result)
-            return response
-        
-        # Step 4: Check for currency conversion
+        # Step 3: Check for currency
         currency_match = re.search(r'(\d+)\s*(usd|dollar|eur|euro|gbp|pound)\s*(to|in)\s*(ngn|naira)', message, re.IGNORECASE)
         if currency_match:
             amount = float(currency_match.group(1))
@@ -229,77 +188,41 @@ class JAI:
                     response["audio"] = JAI.text_to_speech(result)
                 return response
         
-        # Step 5: Check for simple number recognition
-        what_match = re.search(r'what is (\d+)', message, re.IGNORECASE)
-        if what_match:
-            number = float(what_match.group(1))
-            result = f"🧮 {number} is {number}"
-            response = {"response": result, "type": "calculation", "source": "core"}
-            if include_speech:
-                response["audio"] = JAI.text_to_speech(result)
-            return response
-        
-        # Step 6: Check if it's a teaching suggestion
-        teach_match = re.search(r'teach jai.*?:(.*?)answer:(.*?)$', message, re.IGNORECASE | re.DOTALL)
-        if not teach_match:
-            teach_match = re.search(r'teach.*?:(.*?)answer:(.*?)$', message, re.IGNORECASE | re.DOTALL)
-        if teach_match:
-            trigger = teach_match.group(1).strip()
-            answer = teach_match.group(2).strip()
-            success = JAI.save_suggestion(client_id, trigger, answer)
-            if success:
-                result = "✅ Thanks! I'll learn from this. A human will review and approve it."
-            else:
-                result = "❌ Sorry, couldn't save your suggestion. Try again."
-            response = {"response": result, "type": "teaching", "source": "core"}
-            if include_speech:
-                response["audio"] = JAI.text_to_speech(result)
-            return response
-        
-        # Step 7: Try Gemini AI for intelligent response
+        # Step 4: Use Gemini for everything else
         if GEMINI_AVAILABLE:
             try:
-                gemini_response = JAIGemini.generate_response(message)
-                if gemini_response and len(gemini_response) > 5:
-                    response = {
-                        "response": gemini_response,
-                        "type": "ai",
-                        "source": "gemini"
-                    }
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                prompt = f"""You are JAI, a friendly AI companion created by Joshua Giwa from Yukuben, Nigeria.
+You're warm, encouraging, and understand Nigerian context, slang, and culture.
+Keep responses concise, friendly, and helpful.
+
+User: {message}
+
+JAI:"""
+                
+                response = model.generate_content(prompt)
+                gemini_text = response.text.strip()
+                
+                # Clean up if needed
+                if gemini_text.startswith('JAI:'):
+                    gemini_text = gemini_text[4:].strip()
+                
+                if gemini_text:
+                    resp = {"response": gemini_text, "type": "ai", "source": "gemini"}
                     if include_speech:
-                        response["audio"] = JAI.text_to_speech(gemini_response)
-                    return response
+                        resp["audio"] = JAI.text_to_speech(gemini_text)
+                    return resp
             except Exception as e:
                 logger.error(f"Gemini error: {e}")
         
-        # Step 8: Fallback to rule-based personality
-        try:
-            personality_response = JAIPersonality.get_response(message, "", "No lesson")
-            if personality_response:
-                response = {
-                    "response": personality_response,
-                    "type": "personality",
-                    "source": "jai_responses"
-                }
-                if include_speech:
-                    response["audio"] = JAI.text_to_speech(personality_response)
-                return response
-        except Exception as e:
-            logger.error(f"Personality error: {e}")
-        
-        # Step 9: Ultimate fallback
+        # Step 5: Ultimate fallback
         fallbacks = [
             "I'm here. What's on your mind?",
             "Tell me what's going on.",
-            "What would you like to talk about?",
-            "I'm listening. What's on your heart?"
+            "I'm listening. What would you like to talk about?"
         ]
         result = random.choice(fallbacks)
-        response = {
-            "response": result,
-            "type": "fallback",
-            "source": "default"
-        }
+        response = {"response": result, "type": "fallback", "source": "default"}
         if include_speech:
             response["audio"] = JAI.text_to_speech(result)
         return response
@@ -323,20 +246,15 @@ def api_chat():
         result = JAI.generate_response(message, client_id, options)
         return jsonify(result)
     except Exception as e:
-        import traceback
-        error_detail = traceback.format_exc()
-        logger.error(f"Error in api_chat: {e}")
-        logger.error(f"Traceback: {error_detail}")
-        return jsonify({'error': 'Internal server error', 'detail': str(e)}), 500
+        logger.error(f"Error: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({
         'status': 'healthy',
-        'name': 'JAI1 - Intelligence Service',
+        'name': 'JAI1',
         'creator': 'Joshua Giwa',
-        'version': '5.0',
-        'features': ['chat', 'calculate', 'currency', 'teaching', 'tts', 'ai'],
         'gemini_available': GEMINI_AVAILABLE
     })
 
@@ -347,21 +265,9 @@ def admin_download_db():
         return jsonify({'error': 'Unauthorized'}), 401
     return send_file(DB_PATH, as_attachment=True, download_name=f'jai_intelligence_{datetime.now().strftime("%Y%m%d")}.db')
 
-@app.errorhandler(404)
-def not_found(e):
-    return jsonify({'error': 'Endpoint not found'}), 404
-
-@app.errorhandler(500)
-def server_error(e):
-    logger.error(f"Server error: {e}")
-    return jsonify({'error': 'Internal server error'}), 500
-
-# ========== INITIALIZATION ==========
-
 setup_database()
 
 if __name__ == '__main__':
-    logger.info("🧠 JAI1 - Intelligence Service starting...")
-    logger.info(f"🤖 Gemini AI: {'ENABLED' if GEMINI_AVAILABLE else 'DISABLED'}")
-    logger.info(f"🚀 API server running on port {PORT}")
+    logger.info("🧠 JAI1 starting...")
+    logger.info(f"🤖 Gemini: {'ON' if GEMINI_AVAILABLE else 'OFF'}")
     app.run(host='0.0.0.0', port=PORT, debug=False)
