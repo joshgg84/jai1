@@ -1,6 +1,6 @@
-"""JAI - Grammar Engine
-Builds sentences from word banks and grammar rules.
-Now with prepositions for more natural sentences.
+"""JAI - Advanced Grammar Engine
+Builds sentences using parts of speech and grammar rules.
+Generates dynamic, varied responses based on intent and context.
 """
 
 import random
@@ -8,115 +8,152 @@ import re
 from datetime import datetime
 
 class JAIGrammar:
-    """Generates sentences from word banks"""
+    """Advanced grammar engine with parts of speech"""
     
-    # ========== WORD BANKS ==========
+    # ========== PARTS OF SPEECH ==========
     
-    # Pronouns
-    SUBJECTS = {
-        'first': ['I', 'We'],
-        'second': ['You'],
-        'third': ['He', 'She', 'It', 'They']
+    # Nouns
+    NOUNS = {
+        'person': ['friend', 'brother', 'sister', 'stranger', 'companion', 'partner'],
+        'place': ['world', 'home', 'place', 'space', 'corner', 'room', 'village', 'city'],
+        'thing': ['dream', 'goal', 'vision', 'path', 'journey', 'road', 'way'],
+        'feeling': ['heart', 'mind', 'soul', 'spirit', 'thought', 'feeling'],
+        'time': ['moment', 'day', 'hour', 'minute', 'second', 'time'],
+        'concept': ['idea', 'thought', 'truth', 'wisdom', 'knowledge', 'power']
     }
     
     # Verbs
     VERBS = {
-        'greet': ['greet', 'welcome', 'say hello'],
-        'feel': ['feel', 'am', 'am doing'],
-        'think': ['think', 'believe', 'feel'],
-        'hope': ['hope', 'wish', 'pray'],
-        'ask': ['ask', 'wonder', 'am curious'],
-        'action': ['do', 'make', 'build', 'create', 'work'],
-        'movement': ['go', 'come', 'move', 'walk', 'run']
+        'action': ['build', 'create', 'make', 'do', 'work', 'move', 'grow'],
+        'state': ['am', 'is', 'are', 'become', 'remain', 'stay'],
+        'feeling': ['feel', 'sense', 'know', 'understand', 'believe', 'trust'],
+        'thinking': ['think', 'consider', 'reflect', 'ponder', 'imagine', 'dream'],
+        'communication': ['say', 'tell', 'speak', 'share', 'express', 'explain'],
+        'movement': ['go', 'come', 'walk', 'run', 'move', 'travel', 'journey']
     }
     
     # Adjectives
     ADJECTIVES = {
-        'positive': ['good', 'great', 'wonderful', 'amazing', 'awesome', 'fantastic'],
-        'negative': ['heavy', 'tough', 'hard', 'difficult', 'challenging'],
-        'neutral': ['interesting', 'curious', 'funny', 'strange'],
-        'time': ['early', 'late', 'soon', 'quick', 'slow'],
-        'emotion': ['happy', 'sad', 'excited', 'calm', 'peaceful']
-    }
-    
-    # Nouns
-    NOUNS = {
-        'thing': ['thing', 'stuff', 'matter', 'situation'],
-        'day': ['day', 'morning', 'afternoon', 'moment'],
-        'life': ['life', 'journey', 'path', 'road'],
-        'mind': ['mind', 'heart', 'thoughts', 'spirit'],
-        'thoughts': ['thoughts', 'ideas', 'perspective', 'take'],
-        'place': ['place', 'space', 'corner', 'room', 'world'],
-        'time': ['time', 'moment', 'hour', 'minute', 'second']
+        'positive': ['good', 'great', 'wonderful', 'amazing', 'awesome', 'fantastic', 'beautiful', 'powerful'],
+        'negative': ['hard', 'tough', 'difficult', 'challenging', 'heavy', 'painful'],
+        'neutral': ['interesting', 'curious', 'strange', 'unusual', 'different'],
+        'size': ['big', 'small', 'large', 'tiny', 'huge', 'massive', 'miniature'],
+        'quality': ['strong', 'weak', 'bright', 'dark', 'sharp', 'dull', 'clear', 'vague']
     }
     
     # Adverbs
     ADVERBS = {
-        'time': ['now', 'today', 'right now', 'at the moment'],
-        'manner': ['really', 'truly', 'honestly', 'seriously'],
-        'frequency': ['always', 'often', 'sometimes', 'never'],
-        'place': ['here', 'there', 'everywhere', 'somewhere', 'anywhere'],
-        'degree': ['very', 'quite', 'rather', 'extremely', 'barely']
+        'manner': ['carefully', 'quickly', 'slowly', 'gently', 'strongly', 'softly', 'loudly'],
+        'time': ['now', 'soon', 'later', 'today', 'tomorrow', 'yesterday', 'already', 'still'],
+        'frequency': ['always', 'often', 'sometimes', 'rarely', 'never', 'constantly'],
+        'degree': ['very', 'quite', 'rather', 'extremely', 'slightly', 'barely', 'completely'],
+        'place': ['here', 'there', 'everywhere', 'somewhere', 'nowhere', 'anywhere']
     }
     
-    # ========== PREPOSITIONS ==========
-    PREPOSITIONS = {
-        'location': ['in', 'on', 'at', 'by', 'near', 'beside', 'behind', 'in front of', 'under', 'over', 'between'],
-        'time': ['before', 'after', 'during', 'since', 'until', 'within', 'throughout'],
-        'direction': ['to', 'towards', 'into', 'through', 'across', 'along', 'around'],
-        'purpose': ['for', 'with', 'by', 'like', 'as'],
-        'origin': ['from', 'out of', 'off']
+    # Pronouns
+    PRONOUNS = {
+        'subject': ['I', 'you', 'he', 'she', 'it', 'we', 'they'],
+        'object': ['me', 'you', 'him', 'her', 'it', 'us', 'them'],
+        'possessive': ['my', 'your', 'his', 'her', 'its', 'our', 'their'],
+        'reflexive': ['myself', 'yourself', 'himself', 'herself', 'itself', 'ourselves', 'themselves']
     }
     
     # Conjunctions
-    CONJUNCTIONS = ['and', 'but', 'so', 'because', 'though', 'although', 'however', 'therefore']
-    
-    # Sentence starters
-    STARTERS = {
-        'opinion': ['I think', 'I believe', 'To me', 'In my view', 'From my perspective'],
-        'feeling': ['I feel', 'I sense', 'I notice', 'It seems to me'],
-        'question': ['What about', 'How about', 'Tell me about', 'What do you think about', 'Can you share about']
+    CONJUNCTIONS = {
+        'coordinating': ['and', 'but', 'or', 'nor', 'for', 'so', 'yet'],
+        'subordinating': ['because', 'although', 'if', 'when', 'while', 'since', 'though', 'unless']
     }
     
-    # ========== GRAMMAR RULES ==========
+    # Prepositions
+    PREPOSITIONS = {
+        'location': ['in', 'on', 'at', 'by', 'near', 'beside', 'behind', 'in front of', 'under', 'over', 'between', 'among'],
+        'time': ['before', 'after', 'during', 'since', 'until', 'within', 'throughout', 'around'],
+        'direction': ['to', 'towards', 'into', 'through', 'across', 'along', 'around', 'past'],
+        'purpose': ['for', 'with', 'by', 'like', 'as', 'about', 'of'],
+        'origin': ['from', 'out of', 'off']
+    }
+    
+    # ========== SENTENCE PATTERNS ==========
+    
+    PATTERNS = {
+        'simple': [
+            ['subject', 'verb'],
+            ['subject', 'verb', 'object'],
+            ['subject', 'verb', 'adjective'],
+            ['subject', 'verb', 'adverb']
+        ],
+        'compound': [
+            ['subject', 'verb', 'conjunction', 'subject', 'verb'],
+            ['subject', 'verb', 'object', 'conjunction', 'verb', 'object']
+        ],
+        'complex': [
+            ['subordinating', 'subject', 'verb', 'subject', 'verb'],
+            ['subject', 'verb', 'because', 'subject', 'verb']
+        ]
+    }
+    
+    # ========== SENTENCE BUILDING METHODS ==========
     
     @staticmethod
-    def capitalize(text):
-        """Capitalize first letter"""
-        return text[0].upper() + text[1:] if text else text
-    
-    @staticmethod
-    def add_punctuation(text):
-        """Add appropriate punctuation"""
-        if not text:
-            return text
-        if text.endswith('?'):
-            return text
-        if text.endswith('!'):
-            return text
-        if any(word in text.lower() for word in ['what', 'why', 'how', 'when', 'where', 'who', 'is it', 'are you', 'can you']):
-            return text + '?'
-        return text + '.'
-    
-    @staticmethod
-    def add_preposition(phrase, prep_type=None):
-        """Add a preposition to a phrase"""
-        if prep_type:
-            prep = random.choice(JAIGrammar.PREPOSITIONS[prep_type])
-        else:
+    def get_random_word(category, subcategory=None):
+        """Get a random word from a category"""
+        if subcategory and subcategory in JAIGrammar.NOUNS:
+            return random.choice(JAIGrammar.NOUNS[subcategory])
+        if category == 'noun':
+            all_nouns = []
+            for nouns in JAIGrammar.NOUNS.values():
+                all_nouns.extend(nouns)
+            return random.choice(all_nouns)
+        if category == 'verb':
+            all_verbs = []
+            for verbs in JAIGrammar.VERBS.values():
+                all_verbs.extend(verbs)
+            return random.choice(all_verbs)
+        if category == 'adjective':
+            all_adjs = []
+            for adjs in JAIGrammar.ADJECTIVES.values():
+                all_adjs.extend(adjs)
+            return random.choice(all_adjs)
+        if category == 'adverb':
+            all_advs = []
+            for advs in JAIGrammar.ADVERBS.values():
+                all_advs.extend(advs)
+            return random.choice(all_advs)
+        if category == 'preposition':
             all_preps = []
             for preps in JAIGrammar.PREPOSITIONS.values():
                 all_preps.extend(preps)
-            prep = random.choice(all_preps)
-        return f"{prep} {phrase}"
+            return random.choice(all_preps)
+        return ''
     
     @staticmethod
-    def combine_with_preposition(part1, part2, prep_type='location'):
-        """Combine two parts with a preposition"""
-        prep = random.choice(JAIGrammar.PREPOSITIONS[prep_type])
-        return f"{part1} {prep} {part2}"
-    
-    # ========== SENTENCE BUILDERS ==========
+    def build_sentence(pattern_type='simple'):
+        """Build a sentence using grammar rules"""
+        if pattern_type == 'simple':
+            subject = JAIGrammar.get_random_word('noun', 'person')
+            verb = JAIGrammar.get_random_word('verb', 'state')
+            adjective = JAIGrammar.get_random_word('adjective', 'positive')
+            adverb = JAIGrammar.get_random_word('adverb', 'manner')
+            
+            patterns = [
+                f"{subject} {verb} {adjective}",
+                f"{subject} {verb} {adjective} {adverb}",
+                f"{subject} {verb} {JAIGrammar.get_random_word('noun', 'thing')}",
+                f"{subject} {verb} like {JAIGrammar.get_random_word('noun', 'thing')}"
+            ]
+            return random.choice(patterns)
+        
+        if pattern_type == 'compound':
+            s1 = JAIGrammar.get_random_word('noun', 'person')
+            v1 = JAIGrammar.get_random_word('verb', 'action')
+            o1 = JAIGrammar.get_random_word('noun', 'thing')
+            s2 = JAIGrammar.get_random_word('noun', 'person')
+            v2 = JAIGrammar.get_random_word('verb', 'action')
+            conj = random.choice(JAIGrammar.CONJUNCTIONS['coordinating'])
+            
+            return f"{s1} {v1} {o1} {conj} {s2} {v2}"
+        
+        return ""
     
     @staticmethod
     def build_greeting():
@@ -135,7 +172,7 @@ class JAIGrammar:
     def build_how_are_you():
         """Build how are you response"""
         templates = [
-            ["I am doing", random.choice(JAIGrammar.ADJECTIVES['positive']), "thanks for asking", "how about you?"],
+            ["I am doing", JAIGrammar.get_random_word('adjective', 'positive'), "thanks for asking", "how about you?"],
             ["I am good", "just vibing", "what about you?"],
             ["Doing well", "what is new with you today?"],
             ["I am here", "more importantly", "how are YOU doing?"]
@@ -147,10 +184,10 @@ class JAIGrammar:
     def build_follow_up():
         """Build a follow-up question"""
         questions = [
-            "what has been the highlight of your day so far?",
-            "what is new with you?",
-            "what is on your mind today?",
-            "what is happening in your world?"
+            f"what has been the highlight of your day so far?",
+            f"what is new with you?",
+            f"what is on your mind today?",
+            f"what is happening in your world?"
         ]
         return JAIGrammar.add_punctuation(random.choice(questions))
     
@@ -158,23 +195,24 @@ class JAIGrammar:
     def build_motivation():
         """Build a motivational message"""
         phrases = [
-            ["you have got this"],
-            ["every master was once a beginner"],
-            ["keep going"],
-            ["your future self is counting on you"],
-            ["start before you are ready"],
-            ["the seed does not see its growth underground"],
-            ["you are stronger than you know"],
-            ["later usually becomes never"]
+            "you have got this",
+            "every master was once a beginner",
+            "keep going",
+            "your future self is counting on you",
+            "start before you are ready",
+            "the seed does not see its growth underground",
+            "you are stronger than you know",
+            "later usually becomes never"
         ]
-        phrase = random.choice(phrases)[0]
-        ending = random.choice(["keep pushing 💪", "do not give up 🔥", "you have got this 💯", "keep showing up", "I believe in you"])
+        phrase = random.choice(phrases)
+        endings = ["keep pushing 💪", "do not give up 🔥", "you have got this 💯", "keep showing up", "I believe in you"]
+        ending = random.choice(endings)
         
         return JAIGrammar.add_punctuation(f"{JAIGrammar.capitalize(phrase)}. {ending}")
     
     @staticmethod
     def build_advice():
-        """Build advice using word bank"""
+        """Build advice using grammar"""
         starters = [
             "start before you are ready",
             "one step at a time",
@@ -197,31 +235,32 @@ class JAIGrammar:
     
     @staticmethod
     def build_response_with_emotion(emotion):
-        """Build response based on emotion"""
+        """Build response based on emotion with dynamic parts"""
         if emotion == 'positive':
-            responses = [
-                f"That is {random.choice(JAIGrammar.ADJECTIVES['positive'])}! 🎉 Tell me what is making you so happy.",
+            adj = JAIGrammar.get_random_word('adjective', 'positive')
+            return random.choice([
+                f"That is {adj}! 🎉 Tell me what is making you so happy.",
                 f"I love that energy! Share it with me.",
                 f"Yes! Ride that wave. You deserve this joy.",
                 f"That is beautiful. Keep chasing what makes you feel like this.",
                 f"Happiness looks good on you. 😊 What is the occasion?"
-            ]
+            ])
         else:
-            responses = [
-                f"I hear you. That sounds {random.choice(JAIGrammar.ADJECTIVES['negative'])}. You are not alone in this.",
-                f"I hear you. Sometimes things feel {random.choice(JAIGrammar.ADJECTIVES['negative'])}. What is weighing on you?",
+            adj = JAIGrammar.get_random_word('adjective', 'negative')
+            return random.choice([
+                f"I hear you. That sounds {adj}. You are not alone in this.",
+                f"I hear you. Sometimes things feel {adj}. What is weighing on you?",
                 f"That sounds hard. I am here with you. Want to talk it through?",
                 f"It is okay to feel this way. What is on your heart right now?",
                 f"You are not alone. I am here. Tell me what is going on."
-            ]
-        return random.choice(responses)
+            ])
     
     @staticmethod
     def build_simple_response(topic):
-        """Build a simple response about a topic"""
+        """Build a simple response about a topic with dynamic grammar"""
         templates = {
             'weather': [
-                f"I cannot check the weather, but I hope it is {random.choice(JAIGrammar.ADJECTIVES['positive'])} where you are ☀️",
+                f"I cannot check the weather, but I hope it is {JAIGrammar.get_random_word('adjective', 'positive')} where you are ☀️",
                 f"I do not have weather data, but tell me — is it sunny where you are?"
             ],
             'news': [
@@ -229,19 +268,19 @@ class JAIGrammar:
                 f"Tell me your news — I am more interested in what is happening with you anyway."
             ],
             'life': [
-                f"That is a deep question. What do YOU {random.choice(JAIGrammar.VERBS['think'])} life is about?",
+                f"That is a deep question. What do YOU think life is about?",
                 f"I think life is about growth, connection, and becoming who you are meant to be."
             ],
             'love': [
-                f"Love is {random.choice(JAIGrammar.ADJECTIVES['positive'])}. The best love starts with loving yourself first.",
-                f"What does love mean to you? I would love to hear your {random.choice(JAIGrammar.NOUNS['thoughts'])}."
+                f"Love is {JAIGrammar.get_random_word('adjective', 'positive')}. The best love starts with loving yourself first.",
+                f"What does love mean to you? I would love to hear your thoughts."
             ],
             'work': [
                 f"Find what you enjoy, then find a way to get paid for it. That is the dream.",
                 f"Joshua started with a phone and a dream. You have more than that!"
             ],
             'study': [
-                f"{random.choice(JAIGrammar.ADVERBS['frequency']).capitalize()} study a little, not a lot once.",
+                f"{JAIGrammar.get_random_word('adverb', 'frequency').capitalize()} study a little, not a lot once.",
                 f"Find what excites you, then dive deep into it. Passion makes learning easier."
             ],
             'dreams': [
@@ -286,7 +325,25 @@ class JAIGrammar:
         ]
         return random.choice(facts)
     
-    # ========== ADDITIONAL METHODS ==========
+    # ========== UTILITY METHODS ==========
+    
+    @staticmethod
+    def capitalize(text):
+        """Capitalize first letter"""
+        return text[0].upper() + text[1:] if text else text
+    
+    @staticmethod
+    def add_punctuation(text):
+        """Add appropriate punctuation"""
+        if not text:
+            return text
+        if text.endswith('?'):
+            return text
+        if text.endswith('!'):
+            return text
+        if any(word in text.lower() for word in ['what', 'why', 'how', 'when', 'where', 'who', 'is it', 'are you', 'can you']):
+            return text + '?'
+        return text + '.'
     
     @staticmethod
     def get_thanks():
