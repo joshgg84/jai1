@@ -76,6 +76,11 @@ class JAIPersonality:
                     "Happy to hear that. What are you up to?"
                 ])
         
+        # ========== CURRENCY (MUST BE BEFORE JAIINTENT) ==========
+        currency_result = JAICurrency.detect_and_convert(message)
+        if currency_result:
+            return currency_result
+        
         # ========== USE JAIINTENT FOR RESPONSES ==========
         intent_response = JAIIntent.get_response(intent)
         if intent_response:
@@ -118,11 +123,6 @@ class JAIPersonality:
                 result = JAIPersonality.calculate(expr)
                 if result:
                     return result + "\n\nAnything else?"
-        
-        # ========== CURRENCY (Using JAICurrency) ==========
-        currency_result = JAICurrency.detect_and_convert(message)
-        if currency_result:
-            return currency_result
         
         # ========== LESSON ==========
         if lesson_title != "No lesson uploaded" and any(l in msg for l in ["lesson", "learn", "teach", "cyber"]):
