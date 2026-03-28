@@ -80,7 +80,6 @@ class JAICurrency:
         
         formatted = f"{amount:,.2f}"
         
-        # Different formatting for different currencies
         if currency.upper() in ['NGN', 'GHS', 'KES', 'UGX', 'TZS', 'ZAR']:
             return f"{symbol}{formatted}"
         else:
@@ -91,14 +90,12 @@ class JAICurrency:
         """Detect currency conversion in message and return result"""
         msg_lower = message.lower()
         
-        # Extract amount
         amount_match = re.search(r'(\d+(?:\.\d+)?)', msg_lower)
         if not amount_match:
             return None
         
         amount = float(amount_match.group(1))
         
-        # Find currencies in message
         from_curr = None
         to_curr = None
         
@@ -109,7 +106,6 @@ class JAICurrency:
                 else:
                     to_curr = code
         
-        # If only one currency found, assume converting to NGN
         if from_curr and not to_curr:
             to_curr = 'NGN'
         
@@ -121,8 +117,3 @@ class JAICurrency:
                 return f"💰 {formatted_amount} = {formatted_result}"
         
         return None
-    
-    @staticmethod
-    def get_supported_currencies():
-        """Return list of supported currencies"""
-        return list(JAICurrency.CURRENCIES.keys())
