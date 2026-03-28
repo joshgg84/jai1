@@ -61,7 +61,7 @@ class JAIPersonality:
             ])
         
         # ========== "I AM FINE, WHAT ABOUT YOU?" FOLLOW-UP ==========
-        if any(f in msg for f in ["i am fine", "i am fine", "i am good", "i am good", "doing good", "doing well", "i am alright"]):
+        if any(f in msg for f in ["i am fine", "i am good", "doing good", "doing well", "i am alright"]):
             if any(q in msg for q in ["what about you", "how about you", "and you", "u?", "you?"]):
                 return random.choice([
                     "I am doing great, thanks for asking! 😊 What has been the highlight of your day so far?",
@@ -119,18 +119,10 @@ class JAIPersonality:
                 if result:
                     return result + "\n\nAnything else?"
         
-        # ========== CURRENCY ==========
-        if any(c in msg for c in ["usd to ngn", "dollar to naira", "convert"]):
-            amount = re.search(r"(\d+)", message)
-            if amount:
-                amt = int(amount.group(1))
-                if "usd" in msg or "dollar" in msg:
-                    return f"💰 ${amt} USD = ₦{amt * 1500:,} NGN (approx)"
-                if "eur" in msg or "euro" in msg:
-                    return f"💰 €{amt} EUR = ₦{amt * 1600:,} NGN (approx)"
-                if "gbp" in msg or "pound" in msg:
-                    return f"💰 £{amt} GBP = ₦{amt * 1900:,} NGN (approx)"
-            return "💰 Tell me the amount. Like '100 USD to NGN'"
+        # ========== CURRENCY (Using JAICurrency) ==========
+        currency_result = JAICurrency.detect_and_convert(message)
+        if currency_result:
+            return currency_result
         
         # ========== LESSON ==========
         if lesson_title != "No lesson uploaded" and any(l in msg for l in ["lesson", "learn", "teach", "cyber"]):
