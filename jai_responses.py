@@ -13,6 +13,7 @@ from jai_natural import JAINatural
 from jai_conversation import JAIConversational
 from jai_advanced_nlp import JAIAdvancedNLP
 from jai_intent import JAIIntent
+from jai_currency import JAICurrency
 
 logger = logging.getLogger(__name__)
 
