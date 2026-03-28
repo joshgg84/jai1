@@ -90,26 +90,59 @@ class JAICurrency:
         """Detect currency conversion in message and return result"""
         msg_lower = message.lower()
         
+        # Extract amount
         amount_match = re.search(r'(\d+(?:\.\d+)?)', msg_lower)
         if not amount_match:
             return None
         
         amount = float(amount_match.group(1))
         
-        from_curr = None
-        to_curr = None
-        
+        # Find all currency codes mentioned
+        found_currencies = []
         for alias, code in JAICurrency.CURRENCY_ALIASES.items():
             if alias in msg_lower:
-                if from_curr is None:
-                    from_curr = code
-                else:
+                if code not in found_currencies:
+                    found_currencies.append(code)
+        
+        # If we found two currencies, determine from/to based on words like "to", "in", "convert"
+        if len(found_currencies) >= 2:
+            # Look for direction indicators
+            to_pos = float('inf')
+            if 'to' in msg_lower:
+                to_pos = msg_lower.find('to')
+            if 'in' in msg_lower:
+                in_pos = msg_lower.find('in')
+                if in_pos < to_pos:
+                    to_pos = in_pos
+            
+            # Check which currency appears after the indicator
+            to_curr = None
+            from_curr = None
+            for code in found_currencies:
+                code_lower = code.lower()
+                if code_lower in msg_lower and msg_lower.find(code_lower) > to_pos:
                     to_curr = code
+                else:
+                    if from_curr is None:
+                        from_curr = code
+                    elif to_curr is None:
+                        to_curr = code
+            
+            # If still not determined, use first as from, second as to
+            if not to_curr and len(found_currencies) >= 2:
+                from_curr, to_curr = found_currencies[0], found_currencies[1]
+            
+            if from_curr and to_curr:
+                result = JAICurrency.convert(amount, from_curr, to_curr)
+                if result:
+                    formatted_amount = JAICurrency.format(amount, from_curr)
+                    formatted_result = JAICurrency.format(result, to_curr)
+                    return f"💰 {formatted_amount} = {formatted_result}"
         
-        if from_curr and not to_curr:
+        # If only one currency found, assume converting to NGN
+        elif len(found_currencies) == 1:
+            from_curr = found_currencies[0]
             to_curr = 'NGN'
-        
-        if from_curr and to_curr:
             result = JAICurrency.convert(amount, from_curr, to_curr)
             if result:
                 formatted_amount = JAICurrency.format(amount, from_curr)
