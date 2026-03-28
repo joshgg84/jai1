@@ -25,7 +25,16 @@ class JAIIntent:
         ],
         'how_are_you_followup': [
             r'(i am|i am) (fine|good|great|okay|alright|doing well)',
-            r'(doing|feeling) (good|great|okay|fine)'
+            r'(doing|feeling) (good|great|okay|fine)',
+            r'nothing much',
+            r'not much',
+            r'same old',
+            r'just chilling',
+            r'just vibing',
+            r'wat about u',
+            r'what about you',
+            r'and you',
+            r'how about you'
         ],
         'thanks': [
             r'\b(thank|thanks|appreciate|grateful)\b'
@@ -279,9 +288,18 @@ class JAIIntent:
         if intent == 'negative_emotion':
             return JAIGrammar.build_response_with_emotion('negative')
         
-        # ========== FOLLOW-UP RESPONSES ==========
+        # ========== FOLLOW-UP RESPONSES (ANSWERS FIRST) ==========
         
         if intent == 'how_are_you_followup':
-            return JAIGrammar.build_follow_up()
+            # First answer the "what about you" question
+            self_response = random.choice([
+                "I am doing well, thanks for asking!",
+                "I am good! Just been here, ready to chat.",
+                "I am doing great! Always happy to talk.",
+                "I am here and doing alright.",
+                "I am doing fine! Thanks for checking."
+            ])
+            follow_up = JAIGrammar.build_follow_up()
+            return f"{self_response} {follow_up}"
         
         return None
