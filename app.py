@@ -18,6 +18,7 @@ from gtts import gTTS
 # Import JAI's personality
 from jai_responses import JAIPersonality
 from jai_nlp import JAINLP
+from jai_currency import JAICurrency
 
 app = Flask(__name__)
 CORS(app)
@@ -51,7 +52,6 @@ def setup_database():
     conn = get_db()
     cur = conn.cursor()
     
-    # Only create taught and suggestions tables (no lessons)
     cur.execute('''
         CREATE TABLE IF NOT EXISTS taught (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -130,39 +130,39 @@ class JAI:
                 response["audio"] = JAI.text_to_speech(taught)
             return response
         
-        # Step 2: Check for calculation
-        numbers = re.findall(r'\d+', message)
-        if len(numbers) >= 2:
-            expr = message.replace("plus", "+").replace("minus", "-").replace("times", "*").replace("divided by", "/")
-            expr = re.sub(r"[^0-9+\-*/%.() ]", "", expr)
-            try:
-                result = eval(expr)
-                calc_response = f"🧮 {expr} = {result}"
-                response = {"response": calc_response, "type": "calculation", "source": "core"}
-                if include_speech:
-                    response["audio"] = JAI.text_to_speech(calc_response)
-                return response
-            except:
-                pass
+        # Step 2: Check for calculation (MORE SPECIFIC)
+        # Define math indicators
+        math_operators = ['+', '-', '*', '/', '%']
+        math_words = ['plus', 'minus', 'times', 'divided by', 'percent', 'calculate', 'what is']
         
-        # Step 3: Check for currency
-        currency_match = re.search(r'(\d+)\s*(usd|dollar|eur|euro|gbp|pound)\s*(to|in)\s*(ngn|naira)', message, re.IGNORECASE)
-        if currency_match:
-            amount = float(currency_match.group(1))
-            from_curr = currency_match.group(2).upper()
-            if from_curr == "DOLLAR":
-                from_curr = "USD"
-            elif from_curr == "EURO":
-                from_curr = "EUR"
-            elif from_curr == "POUND":
-                from_curr = "GBP"
-            
-            rates = {"USD": 1500, "EUR": 1600, "GBP": 1900, "NGN": 1}
-            converted = amount * rates[from_curr]
-            curr_response = f"💰 {amount:,.2f} {from_curr} = ₦{converted:,.2f}"
-            response = {"response": curr_response, "type": "currency", "source": "core"}
+        has_operator = any(op in message for op in math_operators)
+        has_math_word = any(word in message.lower() for word in math_words)
+        
+        # Check for percent pattern like "15% of 200"
+        percent_pattern = re.search(r'(\d+)\s*%?\s*(of)?\s*(\d+)', message, re.IGNORECASE)
+        
+        if percent_pattern or (has_operator or has_math_word):
+            # Extract numbers
+            numbers = re.findall(r'\d+', message)
+            if len(numbers) >= 2:
+                expr = message.replace("plus", "+").replace("minus", "-").replace("times", "*").replace("divided by", "/")
+                expr = re.sub(r"[^0-9+\-*/%.() ]", "", expr)
+                try:
+                    result = eval(expr)
+                    calc_response = f"🧮 {expr} = {result}"
+                    response = {"response": calc_response, "type": "calculation", "source": "core"}
+                    if include_speech:
+                        response["audio"] = JAI.text_to_speech(calc_response)
+                    return response
+                except:
+                    pass
+        
+        # Step 3: Check for currency (using JAICurrency)
+        currency_result = JAICurrency.detect_and_convert(message)
+        if currency_result:
+            response = {"response": currency_result, "type": "currency", "source": "jai_currency"}
             if include_speech:
-                response["audio"] = JAI.text_to_speech(curr_response)
+                response["audio"] = JAI.text_to_speech(currency_result)
             return response
         
         # Step 4: Use JAIPersonality for conversation
