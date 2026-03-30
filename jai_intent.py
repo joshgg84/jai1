@@ -24,8 +24,8 @@ class JAIIntent:
             r'what is (up|good|happening)'
         ],
         'how_are_you_followup': [
-            r'(i am|i am) (fine|good|great|okay|alright|doing well)',
-            r'(doing|feeling) (good|great|okay|fine)',
+            r'(i am|i am) (fine|good|great|okay|alright|doing well|fyn|gud|gr8)',
+            r'(doing|feeling) (good|great|okay|fine|fyn|gud|gr8)',
             r'nothing much',
             r'not much',
             r'same old',
@@ -37,7 +37,7 @@ class JAIIntent:
             r'how about you'
         ],
         'thanks': [
-            r'\b(thank|thanks|appreciate|grateful)\b'
+            r'\b(thank|thanks|appreciate|grateful|thx|tnx|tks)\b'
         ],
         'goodbye': [
             r'\b(bye|goodbye|see you|later|catch you|peace)\b'
@@ -66,8 +66,9 @@ class JAIIntent:
             r'(\d+) (plus|minus|times|divided by) (\d+)'
         ],
         'ask_currency': [
-            r'(\d+)\s*(usd|dollar|eur|euro|gbp|pound)\s*(to|in)\s*(ngn|naira)',
-            r'convert .* to naira'
+            r'(\d+)\s*(usd|dollar|eur|euro|gbp|pound|ngn|naira|kes|shilling|zar|rand)\s*(to|in)\s*(ngn|naira|usd|kes|zar)',
+            r'convert .* to .*',
+            r'how much is .* in .*'
         ],
         
         # ========== CLARIFICATION ==========
@@ -182,10 +183,10 @@ class JAIIntent:
             r'say something interesting'
         ],
         'positive_emotion': [
-            r'(happy|excited|great|wonderful|amazing|blessed|grateful)',
-            r'i feel (good|great|happy|excited)',
-            r'i am (so|very) (happy|excited)',
-            r'this is (awesome|fantastic)'
+            r'(happy|excited|great|wonderful|amazing|blessed|grateful|fyn|gud|kul|cul|gr8)',
+            r'i feel (good|great|happy|excited|fyn|gud|gr8)',
+            r'i am (so|very) (happy|excited|fyn|gud|gr8)',
+            r'this is (awesome|fantastic|kul|cul)'
         ],
         'negative_emotion': [
             r'(sad|depressed|lonely|tired|stressed|angry|frustrated|overwhelmed|anxious)',
@@ -229,7 +230,7 @@ class JAIIntent:
             return "Yes! 🧮 I can calculate anything. Just ask me like What is 15 percent of 200 or 4 plus 4. What do you want to calculate?"
         
         if intent == 'ask_currency':
-            return "Yes! 💰 I can convert USD, EUR, GBP to NGN. Just say something like 100 USD to NGN. What do you want to convert?"
+            return "Yes! 💰 I can convert currencies. Just say something like 100 USD to NGN or 500 KES to NGN. What do you want to convert?"
         
         # ========== CLARIFICATION ==========
         
