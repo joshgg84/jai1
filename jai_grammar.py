@@ -1,6 +1,5 @@
-"""JAI - Advanced Grammar Engine
-Builds sentences using parts of speech and grammar rules.
-Generates dynamic, varied responses based on intent and context.
+"""JAI - Grammar Engine (Short Responses)
+Word banks, utility methods, and short response builders.
 """
 
 import random
@@ -8,9 +7,9 @@ import re
 from datetime import datetime
 
 class JAIGrammar:
-    """Advanced grammar engine with parts of speech"""
+    """Grammar engine with word banks and short responses"""
     
-    # ========== PARTS OF SPEECH ==========
+    # ========== WORD BANKS ==========
     
     # Nouns
     NOUNS = {
@@ -73,26 +72,7 @@ class JAIGrammar:
         'origin': ['from', 'out of', 'off']
     }
     
-    # ========== SENTENCE PATTERNS ==========
-    
-    PATTERNS = {
-        'simple': [
-            ['subject', 'verb'],
-            ['subject', 'verb', 'object'],
-            ['subject', 'verb', 'adjective'],
-            ['subject', 'verb', 'adverb']
-        ],
-        'compound': [
-            ['subject', 'verb', 'conjunction', 'subject', 'verb'],
-            ['subject', 'verb', 'object', 'conjunction', 'verb', 'object']
-        ],
-        'complex': [
-            ['subordinating', 'subject', 'verb', 'subject', 'verb'],
-            ['subject', 'verb', 'because', 'subject', 'verb']
-        ]
-    }
-    
-    # ========== SENTENCE BUILDING METHODS ==========
+    # ========== UTILITY METHODS ==========
     
     @staticmethod
     def get_random_word(category, subcategory=None):
@@ -127,33 +107,24 @@ class JAIGrammar:
         return ''
     
     @staticmethod
-    def build_sentence(pattern_type='simple'):
-        """Build a sentence using grammar rules"""
-        if pattern_type == 'simple':
-            subject = JAIGrammar.get_random_word('noun', 'person')
-            verb = JAIGrammar.get_random_word('verb', 'state')
-            adjective = JAIGrammar.get_random_word('adjective', 'positive')
-            adverb = JAIGrammar.get_random_word('adverb', 'manner')
-            
-            patterns = [
-                f"{subject} {verb} {adjective}",
-                f"{subject} {verb} {adjective} {adverb}",
-                f"{subject} {verb} {JAIGrammar.get_random_word('noun', 'thing')}",
-                f"{subject} {verb} like {JAIGrammar.get_random_word('noun', 'thing')}"
-            ]
-            return random.choice(patterns)
-        
-        if pattern_type == 'compound':
-            s1 = JAIGrammar.get_random_word('noun', 'person')
-            v1 = JAIGrammar.get_random_word('verb', 'action')
-            o1 = JAIGrammar.get_random_word('noun', 'thing')
-            s2 = JAIGrammar.get_random_word('noun', 'person')
-            v2 = JAIGrammar.get_random_word('verb', 'action')
-            conj = random.choice(JAIGrammar.CONJUNCTIONS['coordinating'])
-            
-            return f"{s1} {v1} {o1} {conj} {s2} {v2}"
-        
-        return ""
+    def capitalize(text):
+        """Capitalize first letter"""
+        return text[0].upper() + text[1:] if text else text
+    
+    @staticmethod
+    def add_punctuation(text):
+        """Add appropriate punctuation"""
+        if not text:
+            return text
+        if text.endswith('?'):
+            return text
+        if text.endswith('!'):
+            return text
+        if any(word in text.lower() for word in ['what', 'why', 'how', 'when', 'where', 'who', 'is it', 'are you', 'can you']):
+            return text + '?'
+        return text + '.'
+    
+    # ========== SHORT RESPONSE BUILDERS ==========
     
     @staticmethod
     def build_greeting():
@@ -172,7 +143,7 @@ class JAIGrammar:
     def build_how_are_you():
         """Build how are you response"""
         templates = [
-            ["I am doing", JAIGrammar.get_random_word('adjective', 'positive'), "thanks for asking", "how about you?"],
+            ["I am doing", random.choice(JAIGrammar.ADJECTIVES['positive']), "thanks for asking", "how about you?"],
             ["I am good", "just vibing", "what about you?"],
             ["Doing well", "what is new with you today?"],
             ["I am here", "more importantly", "how are YOU doing?"]
@@ -184,16 +155,19 @@ class JAIGrammar:
     def build_follow_up():
         """Build a follow-up question"""
         questions = [
-            f"what has been the highlight of your day so far?",
-            f"what is new with you?",
-            f"what is on your mind today?",
-            f"what is happening in your world?"
+            "What has been the highlight of your day so far?",
+            "What is new with you?",
+            "What is on your mind today?",
+            "What is happening in your world?",
+            "Anything exciting going on?",
+            "How has your day been treating you?",
+            "What have you been up to?"
         ]
         return JAIGrammar.add_punctuation(random.choice(questions))
     
     @staticmethod
     def build_motivation():
-        """Build a motivational message"""
+        """Build a short motivational message"""
         phrases = [
             "you have got this",
             "every master was once a beginner",
@@ -212,7 +186,7 @@ class JAIGrammar:
     
     @staticmethod
     def build_advice():
-        """Build advice using grammar"""
+        """Build short advice"""
         starters = [
             "start before you are ready",
             "one step at a time",
@@ -257,7 +231,7 @@ class JAIGrammar:
     
     @staticmethod
     def build_simple_response(topic):
-        """Build a simple response about a topic with dynamic grammar"""
+        """Build a simple response about a topic"""
         templates = {
             'weather': [
                 f"I cannot check the weather, but I hope it is {JAIGrammar.get_random_word('adjective', 'positive')} where you are ☀️",
@@ -325,26 +299,6 @@ class JAIGrammar:
         ]
         return random.choice(facts)
     
-    # ========== UTILITY METHODS ==========
-    
-    @staticmethod
-    def capitalize(text):
-        """Capitalize first letter"""
-        return text[0].upper() + text[1:] if text else text
-    
-    @staticmethod
-    def add_punctuation(text):
-        """Add appropriate punctuation"""
-        if not text:
-            return text
-        if text.endswith('?'):
-            return text
-        if text.endswith('!'):
-            return text
-        if any(word in text.lower() for word in ['what', 'why', 'how', 'when', 'where', 'who', 'is it', 'are you', 'can you']):
-            return text + '?'
-        return text + '.'
-    
     @staticmethod
     def get_thanks():
         """Build a thank you response"""
@@ -368,7 +322,7 @@ class JAIGrammar:
     @staticmethod
     def build_capabilities():
         """Build a capabilities response"""
-        return "I can do a few things:\n\n🧮 **Calculate** — percentages, equations, anything\n💰 **Convert currency** — USD, EUR, GBP to NGN\n📅 **Check dates** — today is date, time, day of week\n💬 **Talk** — life, work, relationships, dreams\n📚 **Teach** — cyber security lessons\n\nWhat do you need help with right now?"
+        return "I can do a few things:\n\n🧮 **Calculate** — percentages, equations, anything\n💰 **Convert currency** — USD, EUR, GBP, KES, ZAR to NGN\n📅 **Check dates** — today is date, time, day of week\n💬 **Talk** — life, work, relationships, dreams\n📚 **Teach** — cyber security lessons\n\nWhat do you need help with right now?"
     
     @staticmethod
     def get_time():
