@@ -7,6 +7,7 @@ import random
 import re
 from datetime import datetime
 from jai_grammar import JAIGrammar
+from jai_grammar_long import JAIGrammarLong
 
 class JAIIntent:
     """Intent detection and response generation"""
@@ -245,19 +246,21 @@ class JAIIntent:
         # ========== ENHANCED INTENTS WITH LONG RESPONSES ==========
         
         if intent == 'ask_motivation':
-            return JAIGrammar.build_long_motivation()
+            return JAIGrammarLong.build_long_motivation()
         
         if intent == 'ask_advice':
-            return JAIGrammar.build_long_advice()
+            return JAIGrammarLong.build_long_advice()
         
         if intent == 'ask_life':
-            return JAIGrammar.build_long_life_response()
+            return JAIGrammarLong.build_long_life_response()
         
         if intent == 'ask_work':
-            return JAIGrammar.build_long_work_response()
+            return JAIGrammarLong.build_long_work_response()
         
         if intent == 'ask_love':
-            return JAIGrammar.build_long_love_response()
+            return JAIGrammarLong.build_long_love_response()
+        
+        # ========== SHORT ENHANCED INTENTS ==========
         
         if intent == 'ask_weather':
             return JAIGrammar.build_simple_response('weather')
