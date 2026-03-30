@@ -242,28 +242,28 @@ class JAIIntent:
                 "I was just responding to you. Can you tell me what you did not understand?"
             ])
         
-        # ========== ENHANCED INTENTS ==========
+        # ========== ENHANCED INTENTS WITH LONG RESPONSES ==========
+        
+        if intent == 'ask_motivation':
+            return JAIGrammar.build_long_motivation()
+        
+        if intent == 'ask_advice':
+            return JAIGrammar.build_long_advice()
+        
+        if intent == 'ask_life':
+            return JAIGrammar.build_long_life_response()
+        
+        if intent == 'ask_work':
+            return JAIGrammar.build_long_work_response()
+        
+        if intent == 'ask_love':
+            return JAIGrammar.build_long_love_response()
         
         if intent == 'ask_weather':
             return JAIGrammar.build_simple_response('weather')
         
         if intent == 'ask_news':
             return JAIGrammar.build_simple_response('news')
-        
-        if intent == 'ask_motivation':
-            return JAIGrammar.build_motivation()
-        
-        if intent == 'ask_advice':
-            return JAIGrammar.build_advice()
-        
-        if intent == 'ask_life':
-            return JAIGrammar.build_simple_response('life')
-        
-        if intent == 'ask_love':
-            return JAIGrammar.build_simple_response('love')
-        
-        if intent == 'ask_work':
-            return JAIGrammar.build_simple_response('work')
         
         if intent == 'ask_study':
             return JAIGrammar.build_simple_response('study')
