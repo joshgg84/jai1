@@ -40,8 +40,9 @@ class JAINLP:
     VOWELS = set('aeiou')
     CONSONANTS = set('bcdfghjklmnpqrstvwxyz')
     
-    # Nigerian slang dictionary
+    # Nigerian slang dictionary with text abbreviations
     NIGERIAN_SLANG = {
+        # Existing Nigerian slang
         "how far": "how are you",
         "wetin": "what",
         "abeg": "please",
@@ -55,12 +56,51 @@ class JAINLP:
         "comot": "leave",
         "shey": "is it",
         "oga": "boss",
-        "mumu": "foolish"
+        "mumu": "foolish",
+        
+        # Text abbreviations
+        "fyn": "fine",
+        "gud": "good",
+        "kul": "cool",
+        "cul": "cool",
+        "gr8": "great",
+        "lol": "laughing out loud",
+        "omg": "oh my god",
+        "pls": "please",
+        "thx": "thanks",
+        "tnx": "thanks",
+        "tks": "thanks",
+        "u": "you",
+        "ur": "your",
+        "r": "are",
+        "y": "why",
+        "k": "okay",
+        "ok": "okay",
+        "np": "no problem",
+        "btw": "by the way",
+        "idk": "I do not know",
+        "idc": "I do not care",
+        "rn": "right now",
+        "tmrw": "tomorrow",
+        "b4": "before",
+        "bc": "because",
+        "cuz": "because",
+        "wat": "what",
+        "wut": "what",
+        "wen": "when",
+        "wer": "where",
+        "d": "the",
+        "da": "the",
+        "dat": "that",
+        "dis": "this",
+        "dem": "them",
+        "wuna": "you all",
+        "una": "you all"
     }
     
     @staticmethod
     def normalize_nigerian_slang(text):
-        """Convert Nigerian slang to standard English"""
+        """Convert Nigerian slang and text abbreviations to standard English"""
         text_lower = text.lower()
         for slang, standard in JAINLP.NIGERIAN_SLANG.items():
             text_lower = text_lower.replace(slang, standard)
@@ -124,7 +164,7 @@ class JAINLP:
             'word_count': len(blob.words),
             'has_question': '?' in sentence,
             'is_greeting': any(g in sentence.lower() for g in ['hi', 'hello', 'hey']),
-            'is_thanks': any(t in sentence.lower() for t in ['thank', 'thanks'])
+            'is_thanks': any(t in sentence.lower() for t in ['thank', 'thanks', 'thx', 'tnx'])
         }
     
     @staticmethod
