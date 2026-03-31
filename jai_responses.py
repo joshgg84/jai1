@@ -1,6 +1,6 @@
 """JAI - Joshua's Artificial Intelligence
 Your companion, coach, friend, calculator, and calendar.
-Now with enhanced intent detection and sentence formation.
+Now with enhanced intent detection, sentence formation, and learning from WhatsApp channel.
 """
 
 import random
@@ -15,9 +15,14 @@ from jai_intent import JAIIntent
 from jai_currency import JAICurrency
 from jai_grammar import JAIGrammar
 from jai_grammar_long import JAIGrammarLong
-from jai_memory import JAIMemory  # Add this import
+from jai_memory import JAIMemory
+from jai_whatsapp_learner import WhatsAppLearner
 
 logger = logging.getLogger(__name__)
+
+# Initialize WhatsApp learner with database
+from jai_memory import DB_PATH
+whatsapp_learner = WhatsAppLearner(DB_PATH)
 
 class JAIPersonality:
     
@@ -30,10 +35,71 @@ class JAIPersonality:
             return None
     
     @staticmethod
+    def learn_masters_mindset_post(message, client_id):
+        """Learn from a Master's Mindset post"""
+        msg = message.lower()
+        
+        # Command to learn post
+        if msg.startswith("learn post:") or msg.startswith("add post:"):
+            content = message.split(":", 1)[1].strip()
+            
+            # Try to extract title
+            title_match = re.search(r'^#?\s*(.+?)(?:\n|$)', content)
+            title = title_match.group(1).strip() if title_match else "Master's Mindset Post"
+            
+            # Extract the main content (remove title if present)
+            if title_match:
+                content = content[title_match.end():].strip()
+            
+            # Create post structure
+            post = {
+                'title': title,
+                'content': content,
+                'category': 'motivation'
+            }
+            
+            # Learn from it
+            result = whatsapp_learner.learn_from_masters_mindset([post])
+            
+            if result['success']:
+                return f"✅ Learned from Master's Mindset post: '{title}'\n\nI've extracted {result['quotes']} powerful quotes and {result['principles']} key principles!"
+            else:
+                return f"❌ Couldn't learn the post. Please make sure it has content."
+        
+        return None
+    
+    @staticmethod
     def get_response(message, lesson_content="", lesson_title="", client_id="unknown"):
         """Main response generator with memory integration"""
-        msg = message.lower()
+        msg = message.lower().strip()
         now = datetime.now()
+        
+        # ========== CHECK FOR WHATSAPP LEARNING COMMANDS ==========
+        
+        # Command to learn from Master's Mindset post
+        learned_post = JAIPersonality.learn_masters_mindset_post(message, client_id)
+        if learned_post:
+            return learned_post
+        
+        # Command to get motivation from learned content
+        if any(m in msg for m in ["motivate me", "inspire me", "give me motivation", "give me hope"]):
+            learned_motivation = whatsapp_learner.get_motivational_response()
+            if learned_motivation:
+                return learned_motivation
+            # Fallback to regular motivation
+            return JAIGrammarLong.build_long_motivation()
+        
+        # Command to check stats
+        if "motivation stats" in msg or "what have you learned" in msg:
+            stats = whatsapp_learner.get_statistics()
+            if stats and stats.get('total_posts', 0) > 0:
+                return f"📚 **What I've Learned from Master's Mindset:**\n\n" \
+                       f"📝 **{stats['total_posts']}** posts studied\n" \
+                       f"💬 **{stats['total_quotes']}** powerful quotes collected\n" \
+                       f"🎯 **{stats['total_principles']}** key principles extracted\n\n" \
+                       f"Ask me to 'motivate me' and I'll share what I've learned!"
+            else:
+                return "I haven't learned any posts yet! Share your Master's Mindset posts with me using 'add post:' followed by the content."
         
         # ========== CHECK MEMORY FIRST ==========
         
@@ -84,13 +150,13 @@ class JAIPersonality:
         if teach_pattern:
             trigger = teach_pattern.group(2).strip()
             response = teach_pattern.group(3).strip()
-            success, message = JAIMemory.teach_response(client_id, trigger, response)
+            success, message_result = JAIMemory.teach_response(client_id, trigger, response)
             if success:
                 return f"✅ I learned that! When you say '{trigger}', I'll respond with '{response}'"
             else:
-                return f"❌ Sorry, I couldn't learn that. Error: {message}"
+                return f"❌ Sorry, I couldn't learn that. Error: {message_result}"
         
-        # ========== NORMAL RESPONSE GENERATION (Your existing code) ==========
+        # ========== NORMAL RESPONSE GENERATION ==========
         
         # Normalize Nigerian slang
         normalized = JAINLP.normalize_nigerian_slang(message)
@@ -154,10 +220,60 @@ class JAIPersonality:
                     "Happy to hear that. What are you up to?"
                 ])
         
-        # ========== CURRENCY ==========
+        # ========== THANKS ==========
+        if any(t in msg for t in ["thank", "thanks", "thx"]):
+            return random.choice([
+                "You're welcome! 😊 Happy to help.",
+                "Anytime! That's what I'm here for.",
+                "My pleasure!"
+            ])
+        
+        # ========== GOODBYE ==========
+        if any(g in msg for g in ["bye", "goodbye", "see you", "later"]):
+            return random.choice([
+                "Goodbye! Take care! 👋",
+                "See you later! Come back anytime.",
+                "Peace! Have a great day!"
+            ])
+        
+        # ========== CREATOR ==========
+        if any(c in msg for c in ["who made you", "who created you", "your creator"]):
+            return "I was created by Joshua Giwa from Yukuben Village, Nigeria! 🇳🇬 He built me to be a helpful companion that learns from every conversation and from his Master's Mindset WhatsApp channel."
+        
+        # ========== CAPABILITIES ==========
+        if any(c in msg for c in ["what can you do", "your skills", "help with"]):
+            return "I can chat with you, do calculations 💰, convert currencies with live rates, and most importantly - I LEARN! \n\n📚 I've learned from Master's Mindset WhatsApp channel. Just say 'motivate me' for powerful insights!\n\nYou can also:\n• Teach me: 'teach hello -> Hi there!'\n• Next time say: 'next time someone says hello say Hey!'\n• Share your name, age, or location"
+        
+        # ========== CURRENCY CONVERSION (Live Rates) ==========
         currency_result = JAICurrency.detect_and_convert(message)
         if currency_result:
             return currency_result
+        
+        # ========== CALCULATIONS ==========
+        if any(op in msg for op in ["+", "-", "*", "/", "%", "calculate", "what is"]):
+            calc_result = JAIPersonality.calculate(message)
+            if calc_result:
+                return calc_result
+        
+        # ========== TIME & DATE ==========
+        if "time" in msg:
+            now = datetime.now()
+            return f"🕐 The time is {now.strftime('%I:%M %p')}"
+        
+        if "date" in msg:
+            now = datetime.now()
+            return f"📅 Today is {now.strftime('%A, %B %d, %Y')}"
+        
+        # ========== JOKES ==========
+        if any(j in msg for j in ["joke", "funny", "make me laugh"]):
+            jokes = [
+                "Why don't scientists trust atoms? Because they make up everything! 😄",
+                "What do you call a fake noodle? An impasta! 🍝",
+                "Why did the scarecrow win an award? He was outstanding in his field! 🌾",
+                "Why do programmers prefer dark mode? Because light attracts bugs! 🐛",
+                "What do you call a Nigerian who knows cyber security? A Nai-ja breaker! 😂"
+            ]
+            return random.choice(jokes)
         
         # ========== USE JAIINTENT FOR RESPONSES ==========
         intent_response = JAIIntent.get_response(intent)
@@ -172,6 +288,10 @@ class JAIPersonality:
                 return "Wow! That energy is contagious! 🎉 Tell me everything — I want to celebrate with you!"
             
             if polarity < -0.6:
+                # Check if we have a comforting quote from Master's Mindset
+                comfort_quote = whatsapp_learner.get_quote_by_theme('perseverance')
+                if comfort_quote:
+                    return f"That sounds really heavy. I am here with you.\n\n✨ From Master's Mindset:\n\"{comfort_quote}\"\n\nWant to talk it through?"
                 return "That sounds really heavy. I am here with you. Want to talk it through? No pressure."
         
         # ========== QUESTION HANDLING ==========
@@ -191,16 +311,6 @@ class JAIPersonality:
                 "I get you! Life no easy but we dey move. Talk to me.",
                 "Ah, you sabi! What is happening in your world?"
             ])
-        
-        # ========== CALCULATOR ==========
-        if any(c in msg for c in ["+", "-", "*", "/", "%"]) or any(p in msg for p in ["calculate", "what is"]):
-            nums = re.findall(r"\d+", message)
-            if len(nums) >= 2:
-                expr = message.replace("plus", "+").replace("minus", "-").replace("times", "*").replace("divided by", "/")
-                expr = re.sub(r"[^0-9+\-*/%.() ]", "", expr)
-                result = JAIPersonality.calculate(expr)
-                if result:
-                    return result + "\n\nAnything else?"
         
         # ========== WORD FORMATION CHECKS ==========
         if any(w in msg for w in ["word", "vowel", "consonant", "spell", "syllable"]):
@@ -226,6 +336,24 @@ class JAIPersonality:
         conv = JAIConversational.get_response(message)
         if conv:
             return conv
+        
+        # ========== SMART FOLLOW-UP ==========
+        if intent == 'general_chat' and analysis and analysis['words']:
+            keywords = JAINLP.extract_keywords(message, top_n=1)
+            if keywords:
+                follow_ups = [
+                    f"What about {keywords[0]} interests you?",
+                    f"Tell me more about {keywords[0]}.",
+                    f"How does {keywords[0]} fit into your day?",
+                    f"What is your experience with {keywords[0]}?"
+                ]
+                return random.choice(follow_ups)
+        
+        # ========== DYNAMIC RESPONSE GENERATION ==========
+        keywords = JAINLP.extract_keywords(message)
+        if keywords:
+            keyword_context = f" about {keywords[0]}" if keywords else ""
+            return f"{random.choice(['That is interesting', 'Tell me more', 'I hear you', 'That is real'])}{keyword_context}. {random.choice(['What else is on your mind', 'How are you feeling about that', 'What do you think', 'Tell me more'])}?"
         
         # ========== DEFAULT ==========
         fallbacks = [
