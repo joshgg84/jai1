@@ -1,6 +1,6 @@
 # masters_mindset.py
 """Master's Mindset WhatsApp Channel Importer
-Imports your motivational posts into JAI for learning.
+Specifically designed for the Master's Mindset channel format.
 """
 
 import re
@@ -11,14 +11,14 @@ import os
 from datetime import datetime
 
 class MastersMindsetImporter:
-    """Import Master's Mindset channel exports into JAI"""
+    """Import Master's Mindset channel content into JAI"""
     
     def __init__(self, jai_api_url, client_id="masters_mindset"):
         """
         Initialize the importer
         
         Args:
-            jai_api_url: Your JAI API URL (e.g., http://localhost:5001 or https://your-app.onrender.com)
+            jai_api_url: Your JAI API URL
             client_id: Identifier for this importer
         """
         self.api_url = jai_api_url
@@ -26,136 +26,178 @@ class MastersMindsetImporter:
         self.imported_posts = []
         self.errors = []
     
-    def parse_whatsapp_export(self, export_text):
+    def parse_channel_content(self, text):
         """
-        Parse WhatsApp channel export into structured posts
+        Parse Master's Mindset channel content from text
         
-        Expected format:
-        2/15/2024, 9:30 AM - Title Here
-        Content lines...
-        More content...
+        Handles format like:
+        # Master's Mindset
+        7 followers
         
-        2/16/2024, 2:15 PM - Another Title
-        More content...
+        ---
+        
+        But my mind tells:  
+        demands oversa  
+        The very thing that will ca cannot follow.  
+        
+        You cannot build and think like the go where I'm goi pace. 
+        
+        ---
+        
+        Loneliness is the price you pay for the future you envision.  
+        
+        So don't be discouraged...
         """
         
         posts = []
         
-        # Pattern to match: date, time, dash, title
-        # Matches: 2/15/2024, 9:30 AM - Title
-        pattern = r'(\d{1,2}/\d{1,2}/\d{4}),?\s+(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*(.+?)(?=\n\d{1,2}/\d{1,2}/\d{4}|\Z)'
+        # Split by the separator (---)
+        sections = re.split(r'\n---+\n', text)
         
-        matches = re.finditer(pattern, export_text, re.DOTALL | re.MULTILINE)
+        current_post = None
+        current_content = []
         
-        for match in matches:
-            date_str = match.group(1)
-            time_str = match.group(2)
-            title = match.group(3).strip()
+        for section in sections:
+            section = section.strip()
+            if not section:
+                continue
             
-            # Get content (everything after title until next date or end)
-            start_pos = match.end()
-            remaining = export_text[start_pos:]
+            # Skip channel metadata section
+            if 'Master\'s Mindset' in section and 'followers' in section:
+                continue
             
-            # Find next date to know where content ends
-            next_date = re.search(r'\d{1,2}/\d{1,2}/\d{4}', remaining)
-            if next_date:
-                end_pos = start_pos + next_date.start()
-                content = export_text[start_pos:end_pos].strip()
+            # Skip insights section
+            if 'Insights for last' in section or 'Accounts reached' in section:
+                continue
+            
+            # Skip media section
+            if 'Media and links' in section:
+                continue
+            
+            # This is content - check if it's a new post or continuation
+            lines = section.split('\n')
+            
+            # Check if this section has a title-like structure
+            if lines[0].startswith('#') or lines[0].startswith('**') or (lines[0].isupper() and len(lines[0]) > 10):
+                # New post detected
+                if current_post and current_content:
+                    # Save previous post
+                    posts.append({
+                        'title': current_post,
+                        'content': '\n'.join(current_content).strip(),
+                        'date': datetime.now().strftime("%m/%d/%Y")
+                    })
+                
+                # Start new post
+                current_post = lines[0].strip('#').strip('*').strip()
+                current_content = lines[1:] if len(lines) > 1 else []
             else:
-                content = remaining.strip()
-            
-            # Clean up content
-            content = self.clean_content(content)
-            
-            if content and len(content) > 20:  # Only import meaningful content
-                posts.append({
-                    'title': title,
-                    'date': f"{date_str} {time_str}",
-                    'content': content,
-                    'word_count': len(content.split()),
-                    'char_count': len(content)
-                })
+                # Add to current post content
+                if current_content is not None:
+                    current_content.extend(lines)
+                else:
+                    # No current post, start one
+                    current_post = "Master's Mindset Wisdom"
+                    current_content = lines
+        
+        # Add the last post
+        if current_post and current_content:
+            posts.append({
+                'title': current_post,
+                'content': '\n'.join(current_content).strip(),
+                'date': datetime.now().strftime("%m/%d/%Y")
+            })
         
         return posts
     
-    def clean_content(self, content):
-        """Clean and format post content for JAI"""
-        # Remove extra whitespace
-        content = content.strip()
+    def extract_quotes_from_content(self, content):
+        """Extract powerful quotes from Master's Mindset content"""
+        quotes = []
         
+        # Split into lines
+        lines = content.split('\n')
+        
+        # Look for lines that are powerful statements
+        for line in lines:
+            line = line.strip()
+            if not line or len(line) < 15:
+                continue
+            
+            # Check for Master's Mindset signature phrases
+            if any(phrase in line.lower() for phrase in [
+                'my mind tells me',
+                'success demands',
+                'the very thing they mock',
+                'you cannot build',
+                'you cannot go where',
+                'loneliness is the price',
+                'don\'t be discouraged',
+                'oversabi'
+            ]):
+                quotes.append(line)
+            
+            # Check for lines with special formatting
+            elif line.startswith('—') or line.startswith('*') or line.startswith('>'):
+                quotes.append(line.lstrip('—*> '))
+            
+            # Check for lines that are complete thoughts
+            elif len(line) > 40 and line.endswith('.') and ' ' in line:
+                quotes.append(line)
+        
+        # Clean quotes
+        cleaned_quotes = []
+        for q in quotes:
+            # Remove any "Read more" text
+            q = re.sub(r'Read more\.\.\.$', '', q)
+            q = q.strip()
+            if q and len(q) > 10:
+                cleaned_quotes.append(q)
+        
+        # Remove duplicates
+        seen = set()
+        unique_quotes = []
+        for q in cleaned_quotes:
+            q_lower = q.lower()
+            if q_lower not in seen:
+                seen.add(q_lower)
+                unique_quotes.append(q)
+        
+        return unique_quotes[:15]  # Limit to top 15 quotes
+    
+    def clean_content(self, content):
+        """Clean and format content for JAI"""
         # Remove "Read more" links
         content = re.sub(r'Read more\.\.\.\s*$', '', content, flags=re.IGNORECASE)
         
-        # Normalize line breaks (keep structure but remove excessive empty lines)
+        # Remove markdown formatting
+        content = re.sub(r'\*\*', '', content)
+        content = re.sub(r'#+\s*', '', content)
+        
+        # Clean up line breaks
         content = re.sub(r'\n{3,}', '\n\n', content)
         
-        # Remove WhatsApp timestamps that might appear in content
-        content = re.sub(r'\d{1,2}:\d{2}\s*[AP]M', '', content)
+        # Remove empty lines at start and end
+        content = content.strip()
         
-        # Remove "Master's Mindset" repeated lines
-        content = re.sub(r'Master\'s Mindset\s*\d+\s*followers', '', content, flags=re.IGNORECASE)
-        
-        # Remove the "Read more" at the end
-        content = re.sub(r'\.{3,}\s*$', '', content)
-        
-        return content.strip()
-    
-    def extract_quotes(self, content):
-        """Extract powerful quotes from post content"""
-        quotes = []
-        
-        # Extract quotes in quotes
-        quoted = re.findall(r'["\']([^"\']+)["\']', content)
-        quotes.extend(quoted)
-        
-        # Extract dash-separated wisdom
-        dash_sections = re.findall(r'—\s*\n(.+?)(?=\n—|\n\n|$)', content, re.DOTALL)
-        for section in dash_sections:
-            for line in section.strip().split('\n'):
-                if len(line) > 20 and len(line) < 300:
-                    quotes.append(line.strip())
-        
-        # Extract powerful statements with common Master's Mindset phrases
-        patterns = [
-            r'but here\'s what I want you to hear:?\s*(.+?)(?=\n|$)',
-            r'here\'s what I\'ve learned:?\s*(.+?)(?=\n|$)',
-            r'my mind tells me:?\s*(.+?)(?=\n|$)',
-            r'success demands:?\s*(.+?)(?=\n|$)',
-            r'you cannot build what I\'m building[:\s]*(.+?)(?=\n|$)',
-            r'loneliness is the price[:\s]*(.+?)(?=\n|$)',
-            r'the very thing they mock[:\s]*(.+?)(?=\n|$)',
-            r'don\'t do that[:\s]*(.+?)(?=\n|$)',
-            r'faith was never meant[:\s]*(.+?)(?=\n|$)'
-        ]
-        
-        for pattern in patterns:
-            matches = re.findall(pattern, content, re.IGNORECASE | re.DOTALL)
-            for match in matches:
-                cleaned = match.strip()
-                if len(cleaned) > 20 and len(cleaned) < 300:
-                    quotes.append(cleaned)
-        
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_quotes = []
-        for q in quotes:
-            if q.lower() not in seen:
-                seen.add(q.lower())
-                unique_quotes.append(q)
-        
-        return unique_quotes[:10]  # Limit to top 10 quotes per post
+        return content
     
     def format_for_jai(self, post):
         """Format post into JAI teaching message"""
-        # Extract quotes for additional teaching
-        quotes = self.extract_quotes(post['content'])
+        # Clean content
+        content = self.clean_content(post['content'])
         
-        # Build message
-        message = f"add post: {post['title']}\n\n{post['content']}"
+        # Extract quotes
+        quotes = self.extract_quotes_from_content(content)
         
-        # Add quotes as separate teaching if they're valuable
-        for quote in quotes:
-            message += f"\n\n📌 Quote: {quote}"
+        # Build message with clear formatting
+        message = f"add post: {post['title']}\n\n"
+        message += content
+        
+        # Add quotes as key takeaways
+        if quotes:
+            message += "\n\n---\n📌 **Key Takeaways:**\n"
+            for i, quote in enumerate(quotes[:5], 1):
+                message += f"{i}. \"{quote}\"\n"
         
         return message
     
@@ -178,13 +220,14 @@ class MastersMindsetImporter:
                 return {
                     'success': True,
                     'title': post['title'],
+                    'quotes_found': len(self.extract_quotes_from_content(post['content'])),
                     'response': response.json()
                 }
             else:
                 return {
                     'success': False,
                     'title': post['title'],
-                    'error': f"HTTP {response.status_code}: {response.text}"
+                    'error': f"HTTP {response.status_code}: {response.text[:200]}"
                 }
                 
         except requests.exceptions.RequestException as e:
@@ -194,166 +237,105 @@ class MastersMindsetImporter:
                 'error': str(e)
             }
     
-    def import_all_posts(self, posts, delay=1):
-        """Import all posts to JAI with delay between requests"""
+    def import_from_text(self, text, delay=1):
+        """Import posts directly from text"""
         
+        # Parse content
+        posts = self.parse_channel_content(text)
+        
+        if not posts:
+            return {
+                'success': False,
+                'error': "No posts found in the text"
+            }
+        
+        print(f"\n📊 Found {len(posts)} posts")
+        
+        # Import all posts
         results = []
-        
-        print(f"\n📚 Importing {len(posts)} posts to JAI...")
-        print("=" * 60)
         
         for i, post in enumerate(posts, 1):
             print(f"\n[{i}/{len(posts)}] 📝 {post['title']}")
-            print(f"   📊 {post['word_count']} words, {post['char_count']} chars")
             
             # Send to JAI
             result = self.send_to_jai(post)
             
             if result['success']:
-                print(f"   ✅ Successfully learned!")
+                print(f"   ✅ Learned! ({result['quotes_found']} quotes extracted)")
                 results.append(result)
             else:
                 print(f"   ❌ Failed: {result.get('error', 'Unknown error')}")
                 self.errors.append(result)
             
-            # Delay to avoid overwhelming the server
+            # Delay to avoid overwhelming
             if i < len(posts):
                 time.sleep(delay)
         
-        return results
+        return {
+            'success': True,
+            'total_posts': len(posts),
+            'imported': len(results),
+            'failed': len(posts) - len(results),
+            'results': results
+        }
     
     def import_from_file(self, filepath, delay=1):
-        """
-        Import posts from a WhatsApp export file
+        """Import posts from a text file"""
         
-        Args:
-            filepath: Path to the exported text file
-            delay: Seconds between requests (default 1)
-        
-        Returns:
-            Dictionary with import statistics
-        """
-        
-        # Check if file exists
         if not os.path.exists(filepath):
             return {
                 'success': False,
                 'error': f"File not found: {filepath}"
             }
         
-        # Read the file
         with open(filepath, 'r', encoding='utf-8') as f:
-            export_text = f.read()
+            text = f.read()
         
-        # Parse posts
-        posts = self.parse_whatsapp_export(export_text)
-        
-        if not posts:
-            return {
-                'success': False,
-                'error': "No posts found in the export file"
-            }
-        
-        print(f"📊 Found {len(posts)} posts in {filepath}")
-        
-        # Import all posts
-        results = self.import_all_posts(posts, delay)
-        
-        # Generate summary
-        success_count = len([r for r in results if r['success']])
-        
-        summary = {
-            'success': True,
-            'file': filepath,
-            'total_posts': len(posts),
-            'imported': success_count,
-            'failed': len(posts) - success_count,
-            'errors': self.errors,
-            'posts': results
-        }
-        
-        # Print summary
-        print("\n" + "=" * 60)
-        print(f"📊 IMPORT SUMMARY")
-        print("=" * 60)
-        print(f"✅ Successfully imported: {success_count}/{len(posts)} posts")
-        print(f"❌ Failed: {len(posts) - success_count} posts")
-        
-        if self.errors:
-            print("\n⚠️ Errors:")
-            for error in self.errors:
-                print(f"   - {error['title']}: {error['error']}")
-        
-        # Save results to file
-        output_file = f"import_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(summary, f, indent=2, ensure_ascii=False)
-        print(f"\n💾 Detailed results saved to: {output_file}")
-        
-        return summary
-    
-    def preview_file(self, filepath, num_posts=3):
-        """Preview first N posts without importing"""
-        
-        with open(filepath, 'r', encoding='utf-8') as f:
-            export_text = f.read()
-        
-        posts = self.parse_whatsapp_export(export_text)
-        
-        print(f"\n📋 Preview of first {min(num_posts, len(posts))} posts:")
-        print("=" * 60)
-        
-        for i, post in enumerate(posts[:num_posts], 1):
-            print(f"\n📝 Post {i}: {post['title']}")
-            print(f"📅 Date: {post['date']}")
-            print(f"📊 Size: {post['word_count']} words, {post['char_count']} chars")
-            print("\nContent preview:")
-            print("-" * 40)
-            print(post['content'][:300] + "..." if len(post['content']) > 300 else post['content'])
-            print("-" * 40)
-        
-        return posts
+        return self.import_from_text(text, delay)
 
-# ========== USAGE EXAMPLES ==========
+# ========== USAGE ==========
 
 if __name__ == "__main__":
-    
     # Configuration
-    JAI_URL = "https://your-jai-app.onrender.com"  # Replace with your JAI URL
-    # For local testing: JAI_URL = "http://localhost:5001"
+    JAI_URL = "http://localhost:5001"  # Change to your JAI URL
     
     # Initialize importer
     importer = MastersMindsetImporter(JAI_URL)
     
-    # Option 1: Preview your export file first
-    print("🔍 Previewing export file...")
-    importer.preview_file("whatsapp_export.txt", num_posts=2)
+    # Your Master's Mindset content (paste from screenshots)
+    content = """# Master's Mindset
+7 followers
+
+---
+
+But my mind tells me: success demands oversabi.
+
+The very thing they mock is the very thing that will carry me where they cannot follow.
+
+You cannot build what I'm building and think like the crowd. You cannot go where I'm going and move at their pace. You cannot see what I see and be understood by those who refuse to look up.
+
+---
+
+Loneliness is the price you pay for the future you envision.
+
+So don't be discouraged. Don't think that because nobody is applauding your process, you must be doing something wrong.
+"""
     
-    # Option 2: Import all posts
-    print("\n" + "=" * 60)
-    response = input("Ready to import? (yes/no): ")
+    # Import the content
+    print("🚀 Importing Master's Mindset content to JAI...")
+    print("=" * 50)
     
-    if response.lower() == 'yes':
-        # Import all posts
-        results = importer.import_from_file("whatsapp_export.txt", delay=1)
-        
-        if results['success']:
-            print("\n🎉 All posts successfully imported into JAI!")
-            print("\nNow you can ask JAI:")
-            print("  • 'motivate me' - Get random wisdom")
-            print("  • 'motivation stats' - See what JAI learned")
-            print("  • 'what have you learned' - Check imported content")
+    result = importer.import_from_text(content)
     
-    # Option 3: Import specific post by copying directly
-    # single_post = """
-    # Everything Bows to Faith
-    # 
-    # I heard something that broke me...
-    # """
-    # 
-    # post = {
-    #     'title': 'Everything Bows to Faith',
-    #     'content': single_post,
-    #     'date': datetime.now().strftime("%m/%d/%Y %I:%M %p")
-    # }
-    # importer.import_all_posts([post])
+    if result['success']:
+        print("\n" + "=" * 50)
+        print("✅ IMPORT COMPLETE")
+        print("=" * 50)
+        print(f"📚 Posts imported: {result['imported']}/{result['total_posts']}")
+        print("\n🎯 Now ask JAI:")
+        print("   • 'motivate me' - Get inspiration")
+        print("   • 'what is oversabi' - Learn the concept")
+        print("   • 'tell me about loneliness and vision'")
+        print("   • 'motivation stats' - See what I've learned")
+    else:
+        print(f"\n❌ Error: {result.get('error')}")
