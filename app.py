@@ -1,6 +1,6 @@
 """JAI1 - Intelligence Service
 Uses JAI's rule-based personality files.
-No lessons — pure conversation.
+No lessons — pure conversation with memory.
 """
 
 import os
@@ -19,6 +19,7 @@ from gtts import gTTS
 from jai_responses import JAIPersonality
 from jai_nlp import JAINLP
 from jai_currency import JAICurrency
+from jai_memory import JAIMemory, setup_database  # Import memory
 
 app = Flask(__name__)
 CORS(app)
@@ -37,73 +38,8 @@ logger = logging.getLogger(__name__)
 ADMIN_KEY = os.getenv('ADMIN_KEY', 'jai_admin_key_2025')
 PORT = int(os.getenv('PORT', 5001))
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
-os.makedirs(DATA_DIR, exist_ok=True)
-DB_PATH = os.path.join(DATA_DIR, 'jai_intelligence.db')
-
-# ========== DATABASE ==========
-
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def setup_database():
-    conn = get_db()
-    cur = conn.cursor()
-    
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS taught (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            client_id TEXT,
-            trigger TEXT NOT NULL,
-            response TEXT NOT NULL,
-            times_used INTEGER DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS suggestions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            client_id TEXT,
-            trigger TEXT,
-            suggested_response TEXT,
-            status TEXT DEFAULT 'pending',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
-    logger.info("✅ Database ready")
-
 # ========== JAI HANDLER ==========
-
 class JAI:
-    @staticmethod
-    def get_taught_response(client_id, trigger):
-        try:
-            conn = get_db()
-            cur = conn.cursor()
-            cur.execute('''
-                SELECT response, times_used FROM taught 
-                WHERE client_id = ? AND trigger LIKE ? 
-                ORDER BY times_used ASC LIMIT 1
-            ''', (client_id, f'%{trigger}%'))
-            result = cur.fetchone()
-            if result:
-                cur.execute('''
-                    UPDATE taught SET times_used = times_used + 1 
-                    WHERE client_id = ? AND trigger LIKE ?
-                ''', (client_id, f'%{trigger}%'))
-                conn.commit()
-                conn.close()
-                return result['response']
-            conn.close()
-        except Exception as e:
-            logger.error(f"DB error: {e}")
-        return None
     
     @staticmethod
     def text_to_speech(text):
@@ -122,51 +58,16 @@ class JAI:
         options = options or {}
         include_speech = options.get('speech', False)
         
-        # Step 1: Check taught response
-        taught = JAI.get_taught_response(client_id, message)
-        if taught:
-            response = {"response": taught, "type": "taught", "source": "memory"}
-            if include_speech:
-                response["audio"] = JAI.text_to_speech(taught)
-            return response
+        # Generate response with memory (pass client_id)
+        personality_response = JAIPersonality.get_response(
+            message, 
+            lesson_content="", 
+            lesson_title="No lesson",
+            client_id=client_id
+        )
         
-        # Step 2: Check for calculation (MORE SPECIFIC)
-        # Define math indicators
-        math_operators = ['+', '-', '*', '/', '%']
-        math_words = ['plus', 'minus', 'times', 'divided by', 'percent', 'calculate', 'what is']
-        
-        has_operator = any(op in message for op in math_operators)
-        has_math_word = any(word in message.lower() for word in math_words)
-        
-        # Check for percent pattern like "15% of 200"
-        percent_pattern = re.search(r'(\d+)\s*%?\s*(of)?\s*(\d+)', message, re.IGNORECASE)
-        
-        if percent_pattern or (has_operator or has_math_word):
-            # Extract numbers
-            numbers = re.findall(r'\d+', message)
-            if len(numbers) >= 2:
-                expr = message.replace("plus", "+").replace("minus", "-").replace("times", "*").replace("divided by", "/")
-                expr = re.sub(r"[^0-9+\-*/%.() ]", "", expr)
-                try:
-                    result = eval(expr)
-                    calc_response = f"🧮 {expr} = {result}"
-                    response = {"response": calc_response, "type": "calculation", "source": "core"}
-                    if include_speech:
-                        response["audio"] = JAI.text_to_speech(calc_response)
-                    return response
-                except:
-                    pass
-        
-        # Step 3: Check for currency (using JAICurrency)
-        currency_result = JAICurrency.detect_and_convert(message)
-        if currency_result:
-            response = {"response": currency_result, "type": "currency", "source": "jai_currency"}
-            if include_speech:
-                response["audio"] = JAI.text_to_speech(currency_result)
-            return response
-        
-        # Step 4: Use JAIPersonality for conversation
-        personality_response = JAIPersonality.get_response(message, "", "No lesson")
+        # Save conversation to memory
+        JAIMemory.save_conversation(client_id, message, personality_response)
         
         response = {"response": personality_response, "type": "personality", "source": "jai_responses"}
         if include_speech:
@@ -191,6 +92,30 @@ def api_chat():
     result = JAI.generate_response(message, client_id, options)
     return jsonify(result)
 
+@app.route('/api/memory/<client_id>', methods=['GET'])
+def get_user_memory(client_id):
+    """Get user-specific memory and facts"""
+    facts = JAIMemory.get_user_facts(client_id)
+    return jsonify({
+        'client_id': client_id,
+        'facts': facts,
+        'message': 'JAI remembers what you teach!'
+    })
+
+@app.route('/api/teach', methods=['POST'])
+def api_teach():
+    """Explicitly teach JAI"""
+    data = request.json
+    trigger = data.get('trigger', '').strip()
+    response = data.get('response', '').strip()
+    client_id = data.get('clientId', 'unknown')
+    
+    if not trigger or not response:
+        return jsonify({'error': 'Trigger and response required'}), 400
+    
+    success, message = JAIMemory.teach_response(client_id, trigger, response)
+    return jsonify({'success': success, 'message': message})
+
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({
@@ -205,10 +130,12 @@ def admin_download_db():
     auth = request.headers.get('X-Admin-Key')
     if auth != ADMIN_KEY:
         return jsonify({'error': 'Unauthorized'}), 401
+    from jai_memory import DB_PATH
     return send_file(DB_PATH, as_attachment=True, download_name=f'jai_intelligence_{datetime.now().strftime("%Y%m%d")}.db')
 
+# Initialize database
 setup_database()
 
 if __name__ == '__main__':
-    logger.info("🗣️ JAI starting...")
+    logger.info("🗣️ JAI starting with memory...")
     app.run(host='0.0.0.0', port=PORT, debug=False)
