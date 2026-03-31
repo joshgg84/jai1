@@ -1,86 +1,126 @@
-"""JAI - Currency Conversion
-Handles African, international, and major world currencies.
+"""JAI - Live Currency Conversion
+Handles African, international, and major world currencies with real-time rates.
 """
 
 import re
+import json
+import logging
+import requests
+from datetime import datetime, timedelta
+from threading import Lock
+
+logger = logging.getLogger(__name__)
 
 class JAICurrency:
-    """Currency conversion for all major currencies"""
+    """Currency conversion with real-time rates and caching"""
     
-    # Complete currency list with symbols and rates (USD as base)
+    # Cache for live rates
+    _rate_cache = {}
+    _last_update = None
+    _cache_duration = timedelta(hours=1)  # Update every hour
+    _cache_lock = Lock()
+    
+    # Free API endpoints (fallback options)
+    API_ENDPOINTS = [
+        "https://api.exchangerate-api.com/v4/latest/USD",
+        "https://api.exchangerate.host/latest?base=USD",
+        "https://v6.exchangerate-api.com/v6/latest/USD"
+    ]
+    
+    # Fallback static rates (used when API is unavailable)
+    FALLBACK_RATES = {
+        'USD': 1.0, 'EUR': 1.08, 'GBP': 1.26, 'JPY': 150.0, 'CNY': 7.25,
+        'INR': 83.0, 'RUB': 92.0, 'CHF': 0.88, 'CAD': 1.35, 'AUD': 1.52,
+        'NZD': 1.65, 'SGD': 1.34, 'HKD': 7.82, 'KRW': 1330.0, 'BRL': 5.00,
+        'MXN': 17.00, 'TRY': 32.0, 'SEK': 10.50, 'NOK': 10.80, 'DKK': 6.90,
+        'PLN': 4.00, 'THB': 36.0, 'MYR': 4.70, 'IDR': 15600.0, 'PHP': 56.0,
+        'VND': 25400.0, 'AED': 3.67, 'SAR': 3.75, 'ILS': 3.70,
+        
+        # African currencies
+        'NGN': 1500.0, 'ZAR': 18.0, 'KES': 130.0, 'GHS': 12.0, 'UGX': 3800.0,
+        'TZS': 2600.0, 'RWF': 1300.0, 'BWP': 13.0, 'ZMW': 22.0, 'NAD': 18.0,
+        'EGP': 48.0, 'MAD': 10.0, 'TND': 3.1, 'DZD': 135.0, 'XOF': 600.0,
+        'XAF': 600.0, 'CDF': 2800.0, 'MUR': 46.0, 'SCR': 14.0, 'ETB': 56.0,
+        'MZN': 64.0, 'AOA': 830.0, 'LSL': 18.0, 'SZL': 18.0, 'ZWL': 360.0,
+        'LYD': 4.8, 'SDG': 600.0, 'SOS': 570.0, 'DJF': 178.0, 'KMF': 490.0,
+        'GMD': 70.0, 'LRD': 190.0, 'SLL': 21000.0, 'MRU': 38.0, 'ERN': 15.0,
+        'BIF': 2850.0, 'MWK': 1700.0, 'MGA': 4500.0, 'STN': 23.0, 'CVE': 103.0
+    }
+    
+    # Currency information
     CURRENCIES = {
         # Major World Currencies
-        'USD': {'name': 'US Dollar', 'symbol': '$', 'rate_to_usd': 1},
-        'EUR': {'name': 'Euro', 'symbol': '€', 'rate_to_usd': 1.08},
-        'GBP': {'name': 'British Pound', 'symbol': '£', 'rate_to_usd': 1.26},
-        'JPY': {'name': 'Japanese Yen', 'symbol': '¥', 'rate_to_usd': 150},
-        'CNY': {'name': 'Chinese Renminbi', 'symbol': '¥', 'rate_to_usd': 7.25},
-        'INR': {'name': 'Indian Rupee', 'symbol': '₹', 'rate_to_usd': 83},
-        'RUB': {'name': 'Russian Ruble', 'symbol': '₽', 'rate_to_usd': 92},
-        'CHF': {'name': 'Swiss Franc', 'symbol': 'Fr', 'rate_to_usd': 0.88},
-        'CAD': {'name': 'Canadian Dollar', 'symbol': '$', 'rate_to_usd': 1.35},
-        'AUD': {'name': 'Australian Dollar', 'symbol': '$', 'rate_to_usd': 1.52},
-        'NZD': {'name': 'New Zealand Dollar', 'symbol': '$', 'rate_to_usd': 1.65},
-        'SGD': {'name': 'Singapore Dollar', 'symbol': '$', 'rate_to_usd': 1.34},
-        'HKD': {'name': 'Hong Kong Dollar', 'symbol': 'HK$', 'rate_to_usd': 7.82},
-        'KRW': {'name': 'South Korean Won', 'symbol': '₩', 'rate_to_usd': 1330},
-        'BRL': {'name': 'Brazilian Real', 'symbol': 'R$', 'rate_to_usd': 5.00},
-        'MXN': {'name': 'Mexican Peso', 'symbol': '$', 'rate_to_usd': 17.00},
-        'TRY': {'name': 'Turkish Lira', 'symbol': '₺', 'rate_to_usd': 32},
-        'SEK': {'name': 'Swedish Krona', 'symbol': 'kr', 'rate_to_usd': 10.50},
-        'NOK': {'name': 'Norwegian Krone', 'symbol': 'kr', 'rate_to_usd': 10.80},
-        'DKK': {'name': 'Danish Krone', 'symbol': 'kr', 'rate_to_usd': 6.90},
-        'PLN': {'name': 'Polish Zloty', 'symbol': 'zł', 'rate_to_usd': 4.00},
-        'THB': {'name': 'Thai Baht', 'symbol': '฿', 'rate_to_usd': 36},
-        'MYR': {'name': 'Malaysian Ringgit', 'symbol': 'RM', 'rate_to_usd': 4.70},
-        'IDR': {'name': 'Indonesian Rupiah', 'symbol': 'Rp', 'rate_to_usd': 15600},
-        'PHP': {'name': 'Philippine Peso', 'symbol': '₱', 'rate_to_usd': 56},
-        'VND': {'name': 'Vietnamese Dong', 'symbol': '₫', 'rate_to_usd': 25400},
-        'AED': {'name': 'UAE Dirham', 'symbol': 'د.إ', 'rate_to_usd': 3.67},
-        'SAR': {'name': 'Saudi Riyal', 'symbol': '﷼', 'rate_to_usd': 3.75},
-        'ILS': {'name': 'Israeli Shekel', 'symbol': '₪', 'rate_to_usd': 3.70},
+        'USD': {'name': 'US Dollar', 'symbol': '$', 'flag': '🇺🇸'},
+        'EUR': {'name': 'Euro', 'symbol': '€', 'flag': '🇪🇺'},
+        'GBP': {'name': 'British Pound', 'symbol': '£', 'flag': '🇬🇧'},
+        'JPY': {'name': 'Japanese Yen', 'symbol': '¥', 'flag': '🇯🇵'},
+        'CNY': {'name': 'Chinese Renminbi', 'symbol': '¥', 'flag': '🇨🇳'},
+        'INR': {'name': 'Indian Rupee', 'symbol': '₹', 'flag': '🇮🇳'},
+        'RUB': {'name': 'Russian Ruble', 'symbol': '₽', 'flag': '🇷🇺'},
+        'CHF': {'name': 'Swiss Franc', 'symbol': 'Fr', 'flag': '🇨🇭'},
+        'CAD': {'name': 'Canadian Dollar', 'symbol': '$', 'flag': '🇨🇦'},
+        'AUD': {'name': 'Australian Dollar', 'symbol': '$', 'flag': '🇦🇺'},
+        'NZD': {'name': 'New Zealand Dollar', 'symbol': '$', 'flag': '🇳🇿'},
+        'SGD': {'name': 'Singapore Dollar', 'symbol': '$', 'flag': '🇸🇬'},
+        'HKD': {'name': 'Hong Kong Dollar', 'symbol': 'HK$', 'flag': '🇭🇰'},
+        'KRW': {'name': 'South Korean Won', 'symbol': '₩', 'flag': '🇰🇷'},
+        'BRL': {'name': 'Brazilian Real', 'symbol': 'R$', 'flag': '🇧🇷'},
+        'MXN': {'name': 'Mexican Peso', 'symbol': '$', 'flag': '🇲🇽'},
+        'TRY': {'name': 'Turkish Lira', 'symbol': '₺', 'flag': '🇹🇷'},
+        'SEK': {'name': 'Swedish Krona', 'symbol': 'kr', 'flag': '🇸🇪'},
+        'NOK': {'name': 'Norwegian Krone', 'symbol': 'kr', 'flag': '🇳🇴'},
+        'DKK': {'name': 'Danish Krone', 'symbol': 'kr', 'flag': '🇩🇰'},
+        'PLN': {'name': 'Polish Zloty', 'symbol': 'zł', 'flag': '🇵🇱'},
+        'THB': {'name': 'Thai Baht', 'symbol': '฿', 'flag': '🇹🇭'},
+        'MYR': {'name': 'Malaysian Ringgit', 'symbol': 'RM', 'flag': '🇲🇾'},
+        'IDR': {'name': 'Indonesian Rupiah', 'symbol': 'Rp', 'flag': '🇮🇩'},
+        'PHP': {'name': 'Philippine Peso', 'symbol': '₱', 'flag': '🇵🇭'},
+        'VND': {'name': 'Vietnamese Dong', 'symbol': '₫', 'flag': '🇻🇳'},
+        'AED': {'name': 'UAE Dirham', 'symbol': 'د.إ', 'flag': '🇦🇪'},
+        'SAR': {'name': 'Saudi Riyal', 'symbol': '﷼', 'flag': '🇸🇦'},
+        'ILS': {'name': 'Israeli Shekel', 'symbol': '₪', 'flag': '🇮🇱'},
         
         # African Currencies
-        'NGN': {'name': 'Nigerian Naira', 'symbol': '₦', 'rate_to_usd': 1500},
-        'ZAR': {'name': 'South African Rand', 'symbol': 'R', 'rate_to_usd': 18},
-        'KES': {'name': 'Kenyan Shilling', 'symbol': 'KSh', 'rate_to_usd': 130},
-        'GHS': {'name': 'Ghanaian Cedi', 'symbol': '₵', 'rate_to_usd': 12},
-        'UGX': {'name': 'Ugandan Shilling', 'symbol': 'USh', 'rate_to_usd': 3800},
-        'TZS': {'name': 'Tanzanian Shilling', 'symbol': 'TSh', 'rate_to_usd': 2600},
-        'RWF': {'name': 'Rwandan Franc', 'symbol': 'FRw', 'rate_to_usd': 1300},
-        'BWP': {'name': 'Botswana Pula', 'symbol': 'P', 'rate_to_usd': 13},
-        'ZMW': {'name': 'Zambian Kwacha', 'symbol': 'ZK', 'rate_to_usd': 22},
-        'NAD': {'name': 'Namibian Dollar', 'symbol': 'N$', 'rate_to_usd': 18},
-        'EGP': {'name': 'Egyptian Pound', 'symbol': 'E£', 'rate_to_usd': 48},
-        'MAD': {'name': 'Moroccan Dirham', 'symbol': 'DH', 'rate_to_usd': 10},
-        'TND': {'name': 'Tunisian Dinar', 'symbol': 'DT', 'rate_to_usd': 3.1},
-        'DZD': {'name': 'Algerian Dinar', 'symbol': 'DA', 'rate_to_usd': 135},
-        'XOF': {'name': 'West African CFA Franc', 'symbol': 'CFA', 'rate_to_usd': 600},
-        'XAF': {'name': 'Central African CFA Franc', 'symbol': 'FCFA', 'rate_to_usd': 600},
-        'CDF': {'name': 'Congolese Franc', 'symbol': 'FC', 'rate_to_usd': 2800},
-        'MUR': {'name': 'Mauritian Rupee', 'symbol': '₨', 'rate_to_usd': 46},
-        'SCR': {'name': 'Seychellois Rupee', 'symbol': '₨', 'rate_to_usd': 14},
-        'ETB': {'name': 'Ethiopian Birr', 'symbol': 'Br', 'rate_to_usd': 56},
-        'MZN': {'name': 'Mozambican Metical', 'symbol': 'MT', 'rate_to_usd': 64},
-        'AOA': {'name': 'Angolan Kwanza', 'symbol': 'Kz', 'rate_to_usd': 830},
-        'LSL': {'name': 'Lesotho Loti', 'symbol': 'L', 'rate_to_usd': 18},
-        'SZL': {'name': 'Swazi Lilangeni', 'symbol': 'E', 'rate_to_usd': 18},
-        'ZWL': {'name': 'Zimbabwean Dollar', 'symbol': '$', 'rate_to_usd': 360},
-        'LYD': {'name': 'Libyan Dinar', 'symbol': 'LD', 'rate_to_usd': 4.8},
-        'SDG': {'name': 'Sudanese Pound', 'symbol': '£', 'rate_to_usd': 600},
-        'SOS': {'name': 'Somali Shilling', 'symbol': 'Sh', 'rate_to_usd': 570},
-        'DJF': {'name': 'Djiboutian Franc', 'symbol': 'Fdj', 'rate_to_usd': 178},
-        'KMF': {'name': 'Comorian Franc', 'symbol': 'CF', 'rate_to_usd': 490},
-        'GMD': {'name': 'Gambian Dalasi', 'symbol': 'D', 'rate_to_usd': 70},
-        'LRD': {'name': 'Liberian Dollar', 'symbol': '$', 'rate_to_usd': 190},
-        'SLL': {'name': 'Sierra Leonean Leone', 'symbol': 'Le', 'rate_to_usd': 21000},
-        'MRU': {'name': 'Mauritanian Ouguiya', 'symbol': 'UM', 'rate_to_usd': 38},
-        'ERN': {'name': 'Eritrean Nakfa', 'symbol': 'Nfk', 'rate_to_usd': 15},
-        'BIF': {'name': 'Burundian Franc', 'symbol': 'FBu', 'rate_to_usd': 2850},
-        'MWK': {'name': 'Malawian Kwacha', 'symbol': 'MK', 'rate_to_usd': 1700},
-        'MGA': {'name': 'Malagasy Ariary', 'symbol': 'Ar', 'rate_to_usd': 4500},
-        'STN': {'name': 'São Tomé and Príncipe Dobra', 'symbol': 'Db', 'rate_to_usd': 23},
-        'CVE': {'name': 'Cape Verdean Escudo', 'symbol': 'Esc', 'rate_to_usd': 103}
+        'NGN': {'name': 'Nigerian Naira', 'symbol': '₦', 'flag': '🇳🇬'},
+        'ZAR': {'name': 'South African Rand', 'symbol': 'R', 'flag': '🇿🇦'},
+        'KES': {'name': 'Kenyan Shilling', 'symbol': 'KSh', 'flag': '🇰🇪'},
+        'GHS': {'name': 'Ghanaian Cedi', 'symbol': '₵', 'flag': '🇬🇭'},
+        'UGX': {'name': 'Ugandan Shilling', 'symbol': 'USh', 'flag': '🇺🇬'},
+        'TZS': {'name': 'Tanzanian Shilling', 'symbol': 'TSh', 'flag': '🇹🇿'},
+        'RWF': {'name': 'Rwandan Franc', 'symbol': 'FRw', 'flag': '🇷🇼'},
+        'BWP': {'name': 'Botswana Pula', 'symbol': 'P', 'flag': '🇧🇼'},
+        'ZMW': {'name': 'Zambian Kwacha', 'symbol': 'ZK', 'flag': '🇿🇲'},
+        'NAD': {'name': 'Namibian Dollar', 'symbol': 'N$', 'flag': '🇳🇦'},
+        'EGP': {'name': 'Egyptian Pound', 'symbol': 'E£', 'flag': '🇪🇬'},
+        'MAD': {'name': 'Moroccan Dirham', 'symbol': 'DH', 'flag': '🇲🇦'},
+        'TND': {'name': 'Tunisian Dinar', 'symbol': 'DT', 'flag': '🇹🇳'},
+        'DZD': {'name': 'Algerian Dinar', 'symbol': 'DA', 'flag': '🇩🇿'},
+        'XOF': {'name': 'West African CFA Franc', 'symbol': 'CFA', 'flag': '🌍'},
+        'XAF': {'name': 'Central African CFA Franc', 'symbol': 'FCFA', 'flag': '🌍'},
+        'CDF': {'name': 'Congolese Franc', 'symbol': 'FC', 'flag': '🇨🇩'},
+        'MUR': {'name': 'Mauritian Rupee', 'symbol': '₨', 'flag': '🇲🇺'},
+        'SCR': {'name': 'Seychellois Rupee', 'symbol': '₨', 'flag': '🇸🇨'},
+        'ETB': {'name': 'Ethiopian Birr', 'symbol': 'Br', 'flag': '🇪🇹'},
+        'MZN': {'name': 'Mozambican Metical', 'symbol': 'MT', 'flag': '🇲🇿'},
+        'AOA': {'name': 'Angolan Kwanza', 'symbol': 'Kz', 'flag': '🇦🇴'},
+        'LSL': {'name': 'Lesotho Loti', 'symbol': 'L', 'flag': '🇱🇸'},
+        'SZL': {'name': 'Swazi Lilangeni', 'symbol': 'E', 'flag': '🇸🇿'},
+        'ZWL': {'name': 'Zimbabwean Dollar', 'symbol': '$', 'flag': '🇿🇼'},
+        'LYD': {'name': 'Libyan Dinar', 'symbol': 'LD', 'flag': '🇱🇾'},
+        'SDG': {'name': 'Sudanese Pound', 'symbol': '£', 'flag': '🇸🇩'},
+        'SOS': {'name': 'Somali Shilling', 'symbol': 'Sh', 'flag': '🇸🇴'},
+        'DJF': {'name': 'Djiboutian Franc', 'symbol': 'Fdj', 'flag': '🇩🇯'},
+        'KMF': {'name': 'Comorian Franc', 'symbol': 'CF', 'flag': '🇰🇲'},
+        'GMD': {'name': 'Gambian Dalasi', 'symbol': 'D', 'flag': '🇬🇲'},
+        'LRD': {'name': 'Liberian Dollar', 'symbol': '$', 'flag': '🇱🇷'},
+        'SLL': {'name': 'Sierra Leonean Leone', 'symbol': 'Le', 'flag': '🇸🇱'},
+        'MRU': {'name': 'Mauritanian Ouguiya', 'symbol': 'UM', 'flag': '🇲🇷'},
+        'ERN': {'name': 'Eritrean Nakfa', 'symbol': 'Nfk', 'flag': '🇪🇷'},
+        'BIF': {'name': 'Burundian Franc', 'symbol': 'FBu', 'flag': '🇧🇮'},
+        'MWK': {'name': 'Malawian Kwacha', 'symbol': 'MK', 'flag': '🇲🇼'},
+        'MGA': {'name': 'Malagasy Ariary', 'symbol': 'Ar', 'flag': '🇲🇬'},
+        'STN': {'name': 'São Tomé and Príncipe Dobra', 'symbol': 'Db', 'flag': '🇸🇹'},
+        'CVE': {'name': 'Cape Verdean Escudo', 'symbol': 'Esc', 'flag': '🇨🇻'}
     }
     
     # Currency aliases for user input
@@ -117,11 +157,73 @@ class JAICurrency:
         'xaf': 'XAF', 'central african cfa': 'XAF'
     }
     
-    @staticmethod
-    def convert(amount, from_curr, to_curr):
+    @classmethod
+    def fetch_live_rates(cls):
+        """Fetch live exchange rates from API"""
+        with cls._cache_lock:
+            # Check if cache is still valid
+            if cls._last_update and datetime.now() - cls._last_update < cls._cache_duration:
+                logger.debug("Using cached exchange rates")
+                return True
+            
+            logger.info("Fetching live exchange rates...")
+            
+            for api_url in cls.API_ENDPOINTS:
+                try:
+                    response = requests.get(api_url, timeout=10)
+                    if response.status_code == 200:
+                        data = response.json()
+                        
+                        # Handle different API response formats
+                        if 'rates' in data:
+                            rates = data['rates']
+                        elif 'quotes' in data:
+                            rates = {k.replace('USD', ''): v for k, v in data['quotes'].items()}
+                            rates['USD'] = 1.0
+                        else:
+                            continue
+                        
+                        # Update cache with live rates
+                        for currency in cls.CURRENCIES.keys():
+                            if currency in rates:
+                                cls._rate_cache[currency] = rates[currency]
+                            elif currency in cls.FALLBACK_RATES:
+                                cls._rate_cache[currency] = cls.FALLBACK_RATES[currency]
+                        
+                        cls._last_update = datetime.now()
+                        logger.info(f"✅ Live rates fetched from {api_url}")
+                        return True
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to fetch from {api_url}: {e}")
+                    continue
+            
+            # If all APIs fail, use fallback rates
+            logger.warning("Using fallback static rates")
+            cls._rate_cache = cls.FALLBACK_RATES.copy()
+            cls._last_update = datetime.now()
+            return False
+    
+    @classmethod
+    def get_rate(cls, currency):
+        """Get exchange rate for a currency (USD base)"""
+        currency = currency.upper()
+        
+        # Fetch rates if cache is empty or expired
+        if not cls._rate_cache or not cls._last_update:
+            cls.fetch_live_rates()
+        elif datetime.now() - cls._last_update > cls._cache_duration:
+            # Background refresh (don't block)
+            import threading
+            threading.Thread(target=cls.fetch_live_rates, daemon=True).start()
+        
+        return cls._rate_cache.get(currency, cls.FALLBACK_RATES.get(currency))
+    
+    @classmethod
+    def convert(cls, amount, from_curr, to_curr):
         """Convert between currencies using USD as base"""
-        from_rate = JAICurrency.CURRENCIES.get(from_curr.upper(), {}).get('rate_to_usd')
-        to_rate = JAICurrency.CURRENCIES.get(to_curr.upper(), {}).get('rate_to_usd')
+        from_rate = cls.get_rate(from_curr)
+        to_rate = cls.get_rate(to_curr)
         
         if from_rate and to_rate:
             usd_amount = amount / from_rate
@@ -129,24 +231,25 @@ class JAICurrency:
             return result
         return None
     
-    @staticmethod
-    def format(amount, currency):
-        """Format currency with proper symbol"""
-        currency_info = JAICurrency.CURRENCIES.get(currency.upper(), {})
+    @classmethod
+    def format(cls, amount, currency):
+        """Format currency with proper symbol and flag"""
+        currency_info = cls.CURRENCIES.get(currency.upper(), {})
         symbol = currency_info.get('symbol', currency)
+        flag = currency_info.get('flag', '💰')
         
         formatted = f"{amount:,.2f}"
         
         # Special formatting for certain currencies
-        if currency.upper() in ['NGN', 'GHS', 'KES', 'UGX', 'TZS', 'ZAR']:
-            return f"{symbol}{formatted}"
-        elif currency.upper() in ['JPY', 'KRW', 'RUB']:
-            return f"{symbol}{int(amount):,}"
+        if currency.upper() in ['JPY', 'KRW', 'RUB', 'IDR', 'VND', 'UGX', 'TZS', 'RWF', 'CDF', 'BIF', 'MWK', 'MGA', 'SLL']:
+            return f"{flag} {symbol}{int(amount):,}"
+        elif currency.upper() in ['NGN', 'GHS', 'KES', 'ZAR', 'BWP', 'NAD', 'LSL', 'SZL']:
+            return f"{flag} {symbol}{formatted}"
         else:
-            return f"{formatted} {symbol}"
+            return f"{flag} {formatted} {symbol}"
     
-    @staticmethod
-    def detect_and_convert(message):
+    @classmethod
+    def detect_and_convert(cls, message):
         """Detect currency conversion in message and return result"""
         msg_lower = message.lower()
         
@@ -159,7 +262,7 @@ class JAICurrency:
         
         # Find all currency codes mentioned
         found_currencies = []
-        for alias, code in JAICurrency.CURRENCY_ALIASES.items():
+        for alias, code in cls.CURRENCY_ALIASES.items():
             if alias in msg_lower:
                 if code not in found_currencies:
                     found_currencies.append(code)
@@ -191,30 +294,40 @@ class JAICurrency:
                 from_curr, to_curr = found_currencies[0], found_currencies[1]
             
             if from_curr and to_curr:
-                result = JAICurrency.convert(amount, from_curr, to_curr)
+                result = cls.convert(amount, from_curr, to_curr)
                 if result:
-                    formatted_amount = JAICurrency.format(amount, from_curr)
-                    formatted_result = JAICurrency.format(result, to_curr)
-                    return f"💰 {formatted_amount} = {formatted_result}"
+                    formatted_amount = cls.format(amount, from_curr)
+                    formatted_result = cls.format(result, to_curr)
+                    from_info = cls.CURRENCIES.get(from_curr, {})
+                    to_info = cls.CURRENCIES.get(to_curr, {})
+                    return f"💱 {formatted_amount} = {formatted_result}\n\n📊 Rate: 1 {from_curr} = {cls.convert(1, from_curr, to_curr):,.4f} {to_curr}"
         
         # If only one currency found, assume converting to NGN
         elif len(found_currencies) == 1:
             from_curr = found_currencies[0]
             to_curr = 'NGN'
-            result = JAICurrency.convert(amount, from_curr, to_curr)
+            result = cls.convert(amount, from_curr, to_curr)
             if result:
-                formatted_amount = JAICurrency.format(amount, from_curr)
-                formatted_result = JAICurrency.format(result, to_curr)
-                return f"💰 {formatted_amount} = {formatted_result}"
+                formatted_amount = cls.format(amount, from_curr)
+                formatted_result = cls.format(result, to_curr)
+                from_info = cls.CURRENCIES.get(from_curr, {})
+                return f"💱 {formatted_amount} = {formatted_result}\n\n📊 Rate: 1 {from_curr} = {cls.convert(1, from_curr, to_curr):,.4f} NGN"
         
         return None
     
-    @staticmethod
-    def get_supported_currencies():
+    @classmethod
+    def get_supported_currencies(cls):
         """Return list of supported currencies"""
-        return list(JAICurrency.CURRENCIES.keys())
+        return list(cls.CURRENCIES.keys())
     
-    @staticmethod
-    def get_currency_info(currency_code):
+    @classmethod
+    def get_currency_info(cls, currency_code):
         """Get information about a specific currency"""
-        return JAICurrency.CURRENCIES.get(currency_code.upper(), None)
+        return cls.CURRENCIES.get(currency_code.upper(), None)
+    
+    @classmethod
+    def get_last_update(cls):
+        """Get last update time for rates"""
+        if cls._last_update:
+            return cls._last_update.strftime("%Y-%m-%d %H:%M:%S")
+        return "Not updated yet"
