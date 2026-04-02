@@ -15,101 +15,59 @@ class WebSearch:
     """Search online for factual questions"""
     
     @classmethod
-    def extract_search_term(cls, query):
-        """Extract the actual search term from a question"""
-        query_lower = query.lower().strip()
-        
-        # Remove question mark
-        query = query.replace('?', '').strip()
-        
-        # List of question patterns to remove
-        question_patterns = [
-            'who is', 'who was', 'who are',
-            'what is', 'what was', 'what are', 'what does',
-            'where is', 'where was', 'where are',
-            'when is', 'when was', 'when did',
-            'why is', 'why was', 'why did',
-            'how to', 'how do', 'how does',
-            'tell me about', 'explain', 'define',
-            'can you tell me about', 'do you know'
-        ]
-        
-        # Remove the question prefix
-        for pattern in question_patterns:
-            if query_lower.startswith(pattern):
-                query = query[len(pattern):].strip()
-                break
-        
-        # Remove any remaining "the", "a", "an" at the start
-        query = re.sub(r'^(the|a|an)\s+', '', query, flags=re.IGNORECASE)
-        
-        return query
-    
-    @classmethod
     def search_online(cls, query):
         """Search online using Wikipedia API"""
         try:
-            # Extract the actual search term
-            search_term = cls.extract_search_term(query)
-            logger.info(f"Original query: {query}")
-            logger.info(f"Search term: {search_term}")
+            # Extract search term from question
+            search_term = query.lower()
             
-            if not search_term or len(search_term) < 2:
-                return None
+            # Remove question words
+            for word in ['what is', 'who is', 'where is', 'when is', 'why is', 'how to', 
+                        'tell me about', 'explain', 'define']:
+                if search_term.startswith(word):
+                    search_term = search_term[len(word):].strip()
+                    break
             
-            # Special handling for common ambiguous terms
-            special_cases = {
-                'python': 'Python (programming language)',
-                'java': 'Java (programming language)',
-                'javascript': 'JavaScript',
-                'html': 'HTML',
-                'css': 'CSS',
-                'c++': 'C++',
-                'c#': 'C Sharp (programming language)'
-            }
+            # Remove question mark
+            search_term = search_term.replace('?', '').strip()
             
-            search_term_lower = search_term.lower()
-            page_title = None
+            # Capitalize first letter for Wikipedia
+            search_term = search_term[0].upper() + search_term[1:] if search_term else search_term
             
-            # Check special cases first
-            if search_term_lower in special_cases:
-                page_title = special_cases[search_term_lower]
-                logger.info(f"Using special case: {page_title}")
-            else:
-                # Try search API to find the best match
-                search_url = f'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={search_term}&format=json'
-                logger.info(f"Searching Wikipedia: {search_url}")
-                
-                search_response = requests.get(search_url, timeout=10, headers={'User-Agent': 'JAI-Bot/1.0'})
-                
-                if search_response.status_code == 200:
-                    search_data = search_response.json()
-                    if search_data.get('query', {}).get('search'):
-                        # Get the first search result title
-                        page_title = search_data['query']['search'][0]['title']
-                        logger.info(f"Search found: {page_title}")
+            logger.info(f"Searching Wikipedia for: {search_term}")
             
-            if not page_title:
-                # Try direct page access
-                page_title = search_term
+            # Try direct Wikipedia API
+            encoded_term = search_term.replace(' ', '_')
+            url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{encoded_term}'
             
-            # Now fetch the page
-            encoded_title = page_title.replace(' ', '_')
-            page_url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{encoded_title}'
-            logger.info(f"Fetching page: {page_url}")
+            response = requests.get(url, timeout=10, headers={'User-Agent': 'JAI-Bot/1.0'})
             
-            page_response = requests.get(page_url, timeout=10, headers={'User-Agent': 'JAI-Bot/1.0'})
-            
-            if page_response.status_code == 200:
-                page_data = page_response.json()
-                if page_data.get('extract'):
-                    extract = page_data['extract']
-                    # Clean up the extract
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('extract'):
+                    extract = data['extract']
+                    # Clean up
                     extract = re.sub(r'\([^)]*\)', '', extract)
                     extract = ' '.join(extract.split())
                     if len(extract) > 50:
-                        logger.info(f"Successfully fetched page: {page_title}")
+                        logger.info(f"Found Wikipedia page for: {search_term}")
                         return extract
+            
+            # If direct fails, try with first word only
+            first_word = search_term.split()[0] if ' ' in search_term else search_term
+            if first_word != search_term:
+                url2 = f'https://en.wikipedia.org/api/rest_v1/page/summary/{first_word}'
+                response2 = requests.get(url2, timeout=10)
+                
+                if response2.status_code == 200:
+                    data2 = response2.json()
+                    if data2.get('extract'):
+                        extract = data2['extract']
+                        extract = re.sub(r'\([^)]*\)', '', extract)
+                        extract = ' '.join(extract.split())
+                        if len(extract) > 50:
+                            logger.info(f"Found Wikipedia page for: {first_word}")
+                            return extract
             
             return None
                 
@@ -129,18 +87,15 @@ class WebSearch:
             'where is', 'where was', 'where are',
             'when is', 'when was', 'when did',
             'why is', 'why was', 'why did',
-            'how to', 'how do', 'how does',
-            'tell me about', 'explain', 'define'
+            'how to', 'how do', 'how does'
         ]
         
         for trigger in question_triggers:
             if msg_lower.startswith(trigger):
-                logger.info(f"Search triggered by: {trigger}")
                 return True
         
         # If message ends with question mark
         if message.strip().endswith('?'):
-            logger.info("Search triggered by question mark")
             return True
         
         return False
@@ -199,11 +154,6 @@ class Calculator:
             return f"🧮 {expr} = {result}"
         except:
             return None
-    
-    @staticmethod
-    def should_calculate(message):
-        msg_lower = message.lower()
-        return any(op in msg_lower for op in ["+", "-", "*", "/", "%", "calculate"])
 
 
 # ========== TIME MODULE ==========
@@ -219,8 +169,3 @@ class TimeService:
     def get_date():
         now = datetime.now()
         return f"📅 Today is {now.strftime('%A, %B %d, %Y')}"
-    
-    @staticmethod
-    def should_respond(message):
-        msg_lower = message.lower()
-        return "time" in msg_lower or "date" in msg_lower
