@@ -15,21 +15,50 @@ class WebSearch:
     """Search online for factual questions"""
     
     @classmethod
+    def extract_search_term(cls, query):
+        """Extract the actual search term from a question"""
+        query_lower = query.lower().strip()
+        
+        # Remove question mark
+        query = query.replace('?', '').strip()
+        
+        # List of question patterns to remove
+        question_patterns = [
+            'who is', 'who was', 'who are',
+            'what is', 'what was', 'what are', 'what does',
+            'where is', 'where was', 'where are',
+            'when is', 'when was', 'when did',
+            'why is', 'why was', 'why did',
+            'how to', 'how do', 'how does',
+            'tell me about', 'explain', 'define',
+            'can you tell me about', 'do you know'
+        ]
+        
+        # Remove the question prefix
+        for pattern in question_patterns:
+            if query_lower.startswith(pattern):
+                query = query[len(pattern):].strip()
+                break
+        
+        # Remove any remaining "the", "a", "an" at the start
+        query = re.sub(r'^(the|a|an)\s+', '', query, flags=re.IGNORECASE)
+        
+        return query
+    
+    @classmethod
     def search_online(cls, query):
         """Search online using Wikipedia API"""
         try:
-            # Clean the query - remove question words
-            clean_query = query.lower()
-            for word in ['who is', 'what is', 'where is', 'when is', 'why is', 'how to', 
-                        'tell me about', 'explain', 'define', 'what are', 'who was']:
-                if clean_query.startswith(word):
-                    clean_query = clean_query[len(word):].strip()
+            # Extract the actual search term
+            search_term = cls.extract_search_term(query)
+            logger.info(f"Original query: {query}")
+            logger.info(f"Search term: {search_term}")
             
-            # Remove question mark
-            clean_query = clean_query.replace('?', '').strip()
+            if not search_term or len(search_term) < 2:
+                return None
             
             # Format for Wikipedia - replace spaces with underscore
-            page_title = clean_query.replace(' ', '_')
+            page_title = search_term.replace(' ', '_')
             
             # Try Wikipedia API
             url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{page_title}'
@@ -45,17 +74,33 @@ class WebSearch:
                     extract = re.sub(r'\([^)]*\)', '', extract)
                     extract = ' '.join(extract.split())
                     if len(extract) > 50:
-                        logger.info(f"Found Wikipedia page for: {clean_query}")
+                        logger.info(f"Found Wikipedia page for: {search_term}")
                         return extract
             
-            # If exact page not found, try search
-            search_url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{page_title.replace(" ", "_")}'
+            # If exact page not found, try search API
+            search_url = f'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={search_term}&format=json'
             search_response = requests.get(search_url, timeout=10)
             
             if search_response.status_code == 200:
-                data = search_response.json()
-                if data.get('extract'):
-                    return data['extract']
+                search_data = search_response.json()
+                if search_data.get('query', {}).get('search'):
+                    # Get the first search result title
+                    first_result = search_data['query']['search'][0]['title']
+                    page_title = first_result.replace(' ', '_')
+                    
+                    # Now fetch that page
+                    page_url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{page_title}'
+                    page_response = requests.get(page_url, timeout=10)
+                    
+                    if page_response.status_code == 200:
+                        page_data = page_response.json()
+                        if page_data.get('extract'):
+                            extract = page_data['extract']
+                            extract = re.sub(r'\([^)]*\)', '', extract)
+                            extract = ' '.join(extract.split())
+                            if len(extract) > 50:
+                                logger.info(f"Found Wikipedia page via search: {first_result}")
+                                return extract
             
             return None
                 
