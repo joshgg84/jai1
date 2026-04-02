@@ -28,13 +28,13 @@ class JAIPersonality:
         """Main response generator with memory, web search, and weather"""
         msg = message.lower().strip()
         
-        # ========== WEATHER CHECK ==========
+        # ========== STEP 1: WEATHER CHECK ==========
         weather_response = Weather.detect_weather_query(message)
         if weather_response:
             JAIMemory.save_conversation(client_id, message, weather_response)
             return weather_response
         
-        # ========== WEB SEARCH (for factual questions) ==========
+        # ========== STEP 2: WEB SEARCH (BEFORE ANY OTHER RESPONSE) ==========
         if WebSearch.should_search(message):
             search_result = WebSearch.search_online(message)
             if search_result:
@@ -49,19 +49,19 @@ class JAIPersonality:
                 JAIMemory.save_conversation(client_id, message, response)
                 return response
         
-        # ========== CHECK MEMORY FIRST ==========
+        # ========== STEP 3: CHECK MEMORY ==========
         
-        # 1. Check for "next time say" patterns
+        # Check for "next time say" patterns
         next_time_response = JAIMemory.get_next_time_say_response(client_id, message)
         if next_time_response:
             return next_time_response
         
-        # 2. Check taught responses
+        # Check taught responses
         taught_response = JAIMemory.get_taught_response(client_id, message)
         if taught_response:
             return taught_response
         
-        # 3. Extract and save user facts
+        # Extract and save user facts
         learned_facts = JAIMemory.extract_and_save_user_fact(client_id, message)
         if learned_facts:
             for fact_key, fact_value in learned_facts:
@@ -72,11 +72,11 @@ class JAIPersonality:
                 elif fact_key == "location":
                     return f"Cool! {fact_value} is a great place. What's it like there?"
         
-        # 4. Get user facts for personalization
+        # Get user facts for personalization
         user_facts = JAIMemory.get_user_facts(client_id)
         user_name = user_facts.get("name", None)
         
-        # ========== CHECK FOR LEARNING PATTERNS ==========
+        # ========== STEP 4: CHECK FOR LEARNING PATTERNS ==========
         
         # Check for "next time say" teaching pattern
         next_time_pattern = re.search(r'next time (?:someone|they|you) (?:say|asks?) ["\']?(.+?)["\']?\s*(?:say|respond with|tell them) ["\']?(.+?)["\']?', msg, re.IGNORECASE)
@@ -103,7 +103,7 @@ class JAIPersonality:
             else:
                 return f"❌ Sorry, I couldn't learn that. Error: {message_result}"
         
-        # ========== NORMAL RESPONSE GENERATION ==========
+        # ========== STEP 5: NORMAL RESPONSE GENERATION ==========
         
         # Analyze sentence with NLP
         analysis = JAINLP.analyze_sentence(message)
@@ -255,7 +255,7 @@ class JAIPersonality:
                 "That is something to think about. What is your take?"
             ])
         
-        # ========== NIGERIAN SLANG DETECTION ==========
+        # ========== NIGERIAN SLANG DETECTION (MOVED AFTER WEB SEARCH) ==========
         if any(slang in message.lower() for slang in JAINLP.NIGERIAN_SLANG.keys()):
             return random.choice([
                 "I hear you! 😊 You dey alright? Tell me more.",
@@ -288,6 +288,24 @@ class JAIPersonality:
         conv = JAIConversational.get_response(message)
         if conv:
             return conv
+        
+        # ========== SMART FOLLOW-UP ==========
+        if intent == 'general_chat' and analysis and analysis['words']:
+            keywords = JAINLP.extract_keywords(message, top_n=1)
+            if keywords:
+                follow_ups = [
+                    f"What about {keywords[0]} interests you?",
+                    f"Tell me more about {keywords[0]}.",
+                    f"How does {keywords[0]} fit into your day?",
+                    f"What is your experience with {keywords[0]}?"
+                ]
+                return random.choice(follow_ups)
+        
+        # ========== DYNAMIC RESPONSE GENERATION ==========
+        keywords = JAINLP.extract_keywords(message)
+        if keywords:
+            keyword_context = f" about {keywords[0]}" if keywords else ""
+            return f"{random.choice(['That is interesting', 'Tell me more', 'I hear you', 'That is real'])}{keyword_context}. {random.choice(['What else is on your mind', 'How are you feeling about that', 'What do you think', 'Tell me more'])}?"
         
         # ========== DEFAULT ==========
         fallbacks = [
