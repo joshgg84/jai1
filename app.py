@@ -1,6 +1,6 @@
 """JAI1 - Intelligence Service
 Uses JAI's rule-based personality files.
-No lessons — pure conversation with memory.
+No lessons — pure conversation with memory, web search, and weather.
 """
 
 import os
@@ -15,11 +15,11 @@ from flask_cors import CORS
 from datetime import datetime
 from gtts import gTTS
 
-# Import JAI's personality
-from jai_responses import JAIPersonality
+# Import JAI's personality - UPDATED to jai_core
+from jai_core import JAIPersonality  # Changed from jai_responses
 from jai_nlp import JAINLP
 from jai_currency import JAICurrency
-from jai_memory import JAIMemory, setup_database  # Import memory
+from jai_memory import JAIMemory, setup_database
 
 app = Flask(__name__)
 CORS(app)
@@ -69,7 +69,7 @@ class JAI:
         # Save conversation to memory
         JAIMemory.save_conversation(client_id, message, personality_response)
         
-        response = {"response": personality_response, "type": "personality", "source": "jai_responses"}
+        response = {"response": personality_response, "type": "personality", "source": "jai_core"}  # Updated source
         if include_speech:
             response["audio"] = JAI.text_to_speech(personality_response)
         return response
@@ -137,5 +137,5 @@ def admin_download_db():
 setup_database()
 
 if __name__ == '__main__':
-    logger.info("🗣️ JAI starting with memory...")
+    logger.info("🗣️ JAI starting with memory, web search, and weather...")
     app.run(host='0.0.0.0', port=PORT, debug=False)
