@@ -60,30 +60,34 @@ class JAIPersonality:
                 return f"❌ Error: {str(e)}"
         
         # ========== CHECK FOR GENERAL KNOWLEDGE QUESTIONS (ALWAYS SEARCH FIRST) ==========
-        # These patterns should ALWAYS trigger web search, regardless of document
+        # These patterns should ALWAYS trigger web search
         general_knowledge_patterns = [
-            r'^who created', r'^who founded', r'^who invented', r'^who discovered',
-            r'^who is', r'^who was', r'^who are',
-            r'^what is', r'^what was', r'^what are', r'^what does',
-            r'^where is', r'^where was', r'^where are',
-            r'^when is', r'^when was', r'^when did',
-            r'^why is', r'^why was', r'^why did',
-            r'^how to', r'^how do', r'^how does',
-            r'tell me about', r'explain', r'define', r'meaning of'
+            r'who created', r'who founded', r'who invented', r'who discovered',
+            r'who is', r'who was', r'who are',
+            r'what is', r'what was', r'what are', r'what does',
+            r'where is', r'where was', r'where are',
+            r'when is', r'when was', r'when did',
+            r'why is', r'why was', r'why did',
+            r'how to', r'how do', r'how does',
+            r'tell me about', r'explain', r'define', r'meaning of',
+            r'what does .+ mean', r'what is .+ called'
         ]
         
         is_general_knowledge = False
         for pattern in general_knowledge_patterns:
             if re.search(pattern, msg):
                 is_general_knowledge = True
+                logger.info(f"General knowledge detected: {pattern}")
                 break
         
         # Also check if message ends with question mark
         if original_message.strip().endswith('?'):
             is_general_knowledge = True
+            logger.info("General knowledge detected: question mark")
         
         # GENERAL KNOWLEDGE - SEARCH ONLINE FIRST
         if is_general_knowledge:
+            logger.info(f"Searching online for: {original_message}")
             search_result = WebSearch.search_online(original_message)
             if search_result:
                 response = f"🔍 {search_result}"
@@ -96,27 +100,15 @@ class JAIPersonality:
             JAIMemory.save_conversation(client_id, original_message, weather_response)
             return weather_response
         
-        # ========== DOCUMENT INTELLIGENCE (if document loaded and not general knowledge) ==========
+        # ========== DOCUMENT INTELLIGENCE (if document loaded) ==========
         if DocumentHandler.has_document(client_id):
             doc = DocumentHandler.get_user_document(client_id)
             if doc:
-                # Check if question is about the document (contains keywords from document)
-                content_lower = doc['content'].lower()
-                question_words = set(re.findall(r'\b[a-z]{4,}\b', msg))
-                stopwords = {'what', 'does', 'this', 'that', 'tell', 'about', 'from', 'with', 'have', 'were', 'there', 'their', 'they', 'will', 'would', 'could', 'should', 'type', 'code', 'language', 'file', 'document', 'please', 'help', 'know', 'want', 'need', 'can', 'you', 'the', 'and', 'for', 'are', 'not', 'explain', 'mean', 'meaning'}
-                question_words = question_words - stopwords
-                
-                # If question contains document keywords, answer from document
-                doc_keywords_found = 0
-                for word in question_words:
-                    if word in content_lower:
-                        doc_keywords_found += 1
-                
-                if doc_keywords_found > 0 or len(question_words) == 0:
-                    doc_answer = DocumentHandler.answer_question(client_id, original_message)
-                    if doc_answer:
-                        JAIMemory.save_conversation(client_id, original_message, doc_answer)
-                        return doc_answer
+                # Answer from document
+                doc_answer = DocumentHandler.answer_question(client_id, original_message)
+                if doc_answer and not doc_answer.startswith("🔍"):
+                    JAIMemory.save_conversation(client_id, original_message, doc_answer)
+                    return doc_answer
         
         # ========== CALCULATIONS ==========
         percent_match = re.search(r'(\d+)\s*percent\s*of\s*(\d+)', msg)
@@ -157,7 +149,7 @@ class JAIPersonality:
         if learned_facts:
             for fact_key, fact_value in learned_facts:
                 if fact_key == "name":
-                    return f"Nice to meet you, {fact_value}! I'll remember that. 😊"
+                    return f"Nice to meet you, {fact_value}! 😊"
                 elif fact_key == "age":
                     return f"Got it! You're {fact_value} years old!"
                 elif fact_key == "location":
@@ -172,14 +164,14 @@ class JAIPersonality:
             trigger = next_time_pattern.group(1).strip()
             response = next_time_pattern.group(2).strip()
             JAIMemory.learn_next_time_say(client_id, trigger, response)
-            return f"📚 Got it! Next time someone says '{trigger}', I'll respond with '{response}'"
+            return f"📚 Got it! When someone says '{trigger}', I'll respond with '{response}'"
         
         teach_pattern = re.search(r'teach ["\']?(.+?)["\']?\s*->\s*["\']?(.+?)["\']?', msg, re.IGNORECASE)
         if teach_pattern:
             trigger = teach_pattern.group(1).strip()
             response = teach_pattern.group(2).strip()
             JAIMemory.teach_response(client_id, trigger, response)
-            return f"✅ Learned! When you say '{trigger}', I'll respond with '{response}'"
+            return f"✅ Learned! '{trigger}' -> '{response}'"
         
         # ========== GREETINGS ==========
         if any(g in msg for g in ["good morning", "morning"]):
@@ -193,8 +185,8 @@ class JAIPersonality:
         
         if any(g in msg for g in ["hi", "hello", "hey", "howdy"]):
             if user_name:
-                return f"Hello {user_name}! 😊 How can I help?\n\n📄 Upload a document\n🔍 Ask a question\n💬 Just chat"
-            return "Hello! 😊 Ask me anything! I can search online, check weather, convert currency, or read documents."
+                return f"Hello {user_name}! 😊 How can I help?"
+            return "Hello! 😊 Ask me anything! I can search online, read documents, check weather, or convert currency."
         
         # ========== HOW ARE YOU ==========
         if any(h in msg for h in ["how are you", "how you doing"]):
