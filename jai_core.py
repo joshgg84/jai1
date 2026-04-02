@@ -35,6 +35,15 @@ class JAIPersonality:
             return weather_response
         
         # ========== STEP 2: WEB SEARCH (FOR QUESTIONS) ==========
+        # Special check: "what is" without numbers should go to search
+        if 'what is' in msg and not re.search(r'\d+', msg):
+            logger.info(f"Question detected (what is without numbers): {message}")
+            search_result = WebSearch.search_online(message)
+            if search_result:
+                response = f"🔍 {search_result}"
+                JAIMemory.save_conversation(client_id, message, response)
+                return response
+        
         # Check if message is a question or contains question words
         is_question = message.strip().endswith('?')
         has_question_word = any(word in msg.split()[:3] for word in ['who', 'what', 'where', 'when', 'why', 'how'])
@@ -48,7 +57,6 @@ class JAIPersonality:
                 response = f"🔍 {search_result}"
                 JAIMemory.save_conversation(client_id, message, response)
                 return response
-            # If search fails, continue to other responses (don't show error)
         
         # ========== STEP 3: CHECK MEMORY ==========
         
@@ -200,13 +208,23 @@ class JAIPersonality:
         if currency_result:
             return currency_result
         
-        # ========== STEP 14: CALCULATIONS ==========
-        if any(op in msg for op in ["+", "-", "*", "/", "%", "calculate", "what is"]):
-            numbers = re.findall(r'\d+', message)
-            if len(numbers) >= 2:
-                calc_result = Calculator.calculate(message)
-                if calc_result:
-                    return calc_result
+        # ========== STEP 14: CALCULATIONS (ONLY IF NUMBERS ARE PRESENT) ==========
+        # Check if message contains math operators AND has numbers
+        has_math_ops = any(op in msg for op in ["+", "-", "*", "/", "%"])
+        has_numbers = len(re.findall(r'\d+', message)) >= 2
+        
+        # Only trigger calculation if there are actual numbers to calculate
+        if has_math_ops and has_numbers:
+            calc_result = Calculator.calculate(message)
+            if calc_result:
+                return calc_result
+        
+        # Handle "what is X percent of Y" pattern separately
+        percent_match = re.search(r'(\d+)\s*percent\s*of\s*(\d+)', msg)
+        if percent_match:
+            calc_result = Calculator.calculate(message)
+            if calc_result:
+                return calc_result
         
         # ========== STEP 15: TIME & DATE ==========
         if "time" in msg:
