@@ -57,12 +57,10 @@ class WebSearch:
             if not search_term or len(search_term) < 2:
                 return None
             
-            # Format for Wikipedia - replace spaces with underscore
+            # First try to get the page directly
             page_title = search_term.replace(' ', '_')
-            
-            # Try Wikipedia API
             url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{page_title}'
-            logger.info(f"Searching Wikipedia: {url}")
+            logger.info(f"Trying direct Wikipedia: {url}")
             
             response = requests.get(url, timeout=10, headers={'User-Agent': 'JAI-Bot/1.0'})
             
@@ -77,18 +75,21 @@ class WebSearch:
                         logger.info(f"Found Wikipedia page for: {search_term}")
                         return extract
             
-            # If exact page not found, try search API
+            # If direct page fails, try search API
             search_url = f'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={search_term}&format=json'
-            search_response = requests.get(search_url, timeout=10)
+            logger.info(f"Trying Wikipedia search: {search_url}")
+            
+            search_response = requests.get(search_url, timeout=10, headers={'User-Agent': 'JAI-Bot/1.0'})
             
             if search_response.status_code == 200:
                 search_data = search_response.json()
                 if search_data.get('query', {}).get('search'):
                     # Get the first search result title
                     first_result = search_data['query']['search'][0]['title']
-                    page_title = first_result.replace(' ', '_')
+                    logger.info(f"Search found: {first_result}")
                     
-                    # Now fetch that page
+                    # Fetch that page
+                    page_title = first_result.replace(' ', '_')
                     page_url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{page_title}'
                     page_response = requests.get(page_url, timeout=10)
                     
@@ -99,8 +100,34 @@ class WebSearch:
                             extract = re.sub(r'\([^)]*\)', '', extract)
                             extract = ' '.join(extract.split())
                             if len(extract) > 50:
-                                logger.info(f"Found Wikipedia page via search: {first_result}")
+                                logger.info(f"Found page via search: {first_result}")
                                 return extract
+            
+            # Special handling for common ambiguous terms
+            special_cases = {
+                'python': 'Python (programming language)',
+                'java': 'Java (programming language)',
+                'c++': 'C++',
+                'javascript': 'JavaScript',
+                'html': 'HTML',
+                'css': 'CSS'
+            }
+            
+            search_term_lower = search_term.lower()
+            if search_term_lower in special_cases:
+                special_title = special_cases[search_term_lower].replace(' ', '_')
+                special_url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{special_title}'
+                special_response = requests.get(special_url, timeout=10)
+                
+                if special_response.status_code == 200:
+                    special_data = special_response.json()
+                    if special_data.get('extract'):
+                        extract = special_data['extract']
+                        extract = re.sub(r'\([^)]*\)', '', extract)
+                        extract = ' '.join(extract.split())
+                        if len(extract) > 50:
+                            logger.info(f"Found via special case: {special_title}")
+                            return extract
             
             return None
                 
