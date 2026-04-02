@@ -18,12 +18,13 @@ class WebSearch:
     def search_online(cls, query):
         """Quick search using Wikipedia API"""
         try:
-            # Clean the query
-            clean_query = cls._clean_query(query)
+            # Clean the query - extract the main subject
+            clean_query = cls._extract_subject(query)
             if not clean_query or len(clean_query) < 3:
                 return None
             
-            logger.info(f"Searching: {clean_query}")
+            logger.info(f"Original query: {query}")
+            logger.info(f"Extracted subject: {clean_query}")
             
             # Try Wikipedia directly
             result = cls._search_wikipedia(clean_query)
@@ -37,33 +38,45 @@ class WebSearch:
             return None
     
     @classmethod
-    def _clean_query(cls, query):
-        """Extract the main search term from a question"""
+    def _extract_subject(cls, query):
+        """Extract the main subject from a question"""
         query_lower = query.lower().strip()
         
-        # Remove common question prefixes
-        prefixes = [
-            'who is', 'who was', 'who are',
-            'what is', 'what was', 'what are',
+        # Remove question mark
+        query = query.replace('?', '').strip()
+        
+        # List of question patterns to remove
+        question_patterns = [
+            'who created', 'who made', 'who invented', 'who discovered',
+            'who founded', 'who is', 'who was', 'who are',
+            'what is', 'what was', 'what are', 'what does',
             'where is', 'where was', 'where are',
             'when is', 'when was', 'when did',
             'why is', 'why was', 'why did',
             'how to', 'how do', 'how does',
-            'tell me about', 'explain', 'define'
+            'tell me about', 'explain', 'define',
+            'can you tell me about', 'do you know'
         ]
         
-        for prefix in prefixes:
-            if query_lower.startswith(prefix):
-                query = query[len(prefix):].strip()
+        # Remove the question prefix
+        for pattern in question_patterns:
+            if query_lower.startswith(pattern):
+                query = query[len(pattern):].strip()
                 break
         
-        # Remove question mark and extra spaces
-        query = query.replace('?', '').strip()
+        # If query is too short after removing pattern, try to get the last word
+        if len(query) < 3:
+            words = query_lower.split()
+            if words:
+                # Get the last word (likely the subject)
+                query = words[-1]
         
         # Capitalize first letter for Wikipedia
         if query:
             query = query[0].upper() + query[1:]
         
+        # Handle multi-word subjects (like "Toyota", "Elon Musk")
+        # Don't split if it's a name
         return query
     
     @classmethod
@@ -72,23 +85,51 @@ class WebSearch:
         try:
             # Format the term for URL
             formatted_term = term.replace(' ', '_')
-            url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{formatted_term}'
             
-            response = requests.get(url, timeout=5, headers={'User-Agent': 'JAI/1.0'})
+            # Try direct page first
+            url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{formatted_term}'
+            logger.info(f"Wikipedia URL: {url}")
+            
+            response = requests.get(url, timeout=8, headers={'User-Agent': 'JAI/1.0'})
             
             if response.status_code == 200:
                 data = response.json()
                 if data.get('extract'):
-                    # Get the first paragraph or two
                     extract = data['extract']
                     # Remove parentheticals
                     extract = re.sub(r'\([^)]*\)', '', extract)
                     # Clean up whitespace
                     extract = ' '.join(extract.split())
                     # Limit length
-                    if len(extract) > 500:
-                        extract = extract[:500] + "..."
+                    if len(extract) > 600:
+                        extract = extract[:600] + "..."
+                    logger.info(f"Found Wikipedia page for: {term}")
                     return extract
+            
+            # Try search API if direct page fails
+            search_url = f'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={term}&format=json'
+            search_response = requests.get(search_url, timeout=8)
+            
+            if search_response.status_code == 200:
+                search_data = search_response.json()
+                if search_data.get('query', {}).get('search'):
+                    # Get the first search result
+                    first_result = search_data['query']['search'][0]['title']
+                    logger.info(f"Search found: {first_result}")
+                    
+                    # Fetch that page
+                    page_url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{first_result.replace(" ", "_")}'
+                    page_response = requests.get(page_url, timeout=8)
+                    
+                    if page_response.status_code == 200:
+                        page_data = page_response.json()
+                        if page_data.get('extract'):
+                            extract = page_data['extract']
+                            extract = re.sub(r'\([^)]*\)', '', extract)
+                            extract = ' '.join(extract.split())
+                            if len(extract) > 600:
+                                extract = extract[:600] + "..."
+                            return extract
             
             return None
         except Exception as e:
@@ -100,22 +141,27 @@ class WebSearch:
         """Quick check if message needs web search"""
         msg = message.lower().strip()
         
-        # Check for question words at start
-        question_starts = ['who', 'what', 'where', 'when', 'why', 'how']
-        first_word = msg.split()[0] if msg.split() else ''
+        # Check for question patterns
+        question_patterns = [
+            'who created', 'who made', 'who invented', 'who discovered',
+            'who founded', 'who is', 'who was', 'who are',
+            'what is', 'what was', 'what are', 'what does',
+            'where is', 'where was', 'where are',
+            'when is', 'when was', 'when did',
+            'why is', 'why was', 'why did',
+            'how to', 'how do', 'how does',
+            'tell me about', 'explain', 'define'
+        ]
         
-        if first_word in question_starts:
-            return True
+        for pattern in question_patterns:
+            if pattern in msg:
+                logger.info(f"Search triggered by: {pattern}")
+                return True
         
         # Check for question mark
         if '?' in msg:
+            logger.info("Search triggered by question mark")
             return True
-        
-        # Check for common question patterns
-        question_patterns = ['what is', 'who is', 'where is', 'when is', 'why is', 'how to']
-        for pattern in question_patterns:
-            if pattern in msg:
-                return True
         
         return False
 
@@ -153,7 +199,6 @@ class Weather:
             city = "Lagos"
         
         try:
-            # Using wttr.in with simple format
             url = f"https://wttr.in/{city}?format=%C:+%t,+%w,+%h&m"
             response = requests.get(url, timeout=5)
             
@@ -172,7 +217,6 @@ class Weather:
         msg_lower = message.lower()
         
         if 'weather' in msg_lower or 'temperature' in msg_lower:
-            # Extract city
             city = None
             if 'in' in msg_lower:
                 parts = msg_lower.split('in')
@@ -190,7 +234,6 @@ class Calculator:
     @staticmethod
     def calculate(expr):
         try:
-            # Clean the expression
             expr = expr.replace('plus', '+').replace('minus', '-')
             expr = expr.replace('times', '*').replace('divided by', '/')
             expr = re.sub(r"[^0-9+\-*/%.() ]", "", expr)
@@ -234,22 +277,22 @@ class GeneralKnowledge:
         """Quick check if this is a general knowledge question"""
         q_lower = question.lower()
         
-        # Patterns that indicate general knowledge
         patterns = [
-            r'who (is|was|created|founded|invented)',
-            r'what (is|was|are)',
-            r'where (is|was|are)',
-            r'when (is|was|did)',
-            r'why (is|was|did)',
-            r'how (to|do|does|is)',
-            r'what does .+ mean',
-            r'explain .+',
-            r'define .+',
-            r'tell me about .+'
+            r'who created', r'who made', r'who invented', r'who discovered',
+            r'who founded', r'who is', r'who was', r'who are',
+            r'what is', r'what was', r'what are', r'what does',
+            r'where is', r'where was', r'where are',
+            r'when is', r'when was', r'when did',
+            r'why is', r'why was', r'why did',
+            r'how to', r'how do', r'how does',
+            r'tell me about', r'explain', r'define'
         ]
         
         for pattern in patterns:
             if re.search(pattern, q_lower):
                 return True
+        
+        if question.strip().endswith('?'):
+            return True
         
         return False
