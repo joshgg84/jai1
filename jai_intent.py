@@ -61,9 +61,10 @@ class JAIIntent:
             r'what (date|day) (is it|today)',
             r'today is date'
         ],
+        # FIXED: Removed 'what is' from calculation pattern
         'ask_calculation': [
             r'\d+[\+\-\*/%]',
-            r'(calculate|what is|how much is)',
+            r'(calculate|how much is)',
             r'(\d+) (plus|minus|times|divided by) (\d+)'
         ],
         'ask_currency': [
@@ -227,8 +228,9 @@ class JAIIntent:
         if intent == 'ask_date':
             return JAIGrammar.get_date()
         
+        # FIXED: Updated calculation response
         if intent == 'ask_calculation':
-            return "Yes! 🧮 I can calculate anything. Just ask me like What is 15 percent of 200 or 4 plus 4. What do you want to calculate?"
+            return "Yes! 🧮 I can calculate anything. Just ask me like 15 percent of 200 or 4 plus 4. What do you want to calculate?"
         
         if intent == 'ask_currency':
             return "Yes! 💰 I can convert currencies. Just say something like 100 USD to NGN or 500 KES to NGN. What do you want to convert?"
