@@ -20,10 +20,14 @@ class WebSearch:
     @classmethod
     def search_online(cls, query):
         """Quick search using Wikipedia API with disambiguation support"""
+        if not query:
+            return None
+            
         try:
             # FIRST: Check if this is a clarification response
-            if cls._check_clarification_response(query):
-                return cls._check_clarification_response(query)
+            clarification_result = cls._check_clarification_response(query)
+            if clarification_result:
+                return clarification_result
             
             # Clean the query - extract the main subject
             clean_query = cls._extract_subject(query)
@@ -61,7 +65,7 @@ class WebSearch:
         current_time = datetime.now()
         to_delete = []
         for key, data in cls._pending_clarifications.items():
-            if (current_time - data['timestamp']).seconds > 120:
+            if (current_time - data.get('timestamp', current_time)).seconds > 120:
                 to_delete.append(key)
         for key in to_delete:
             del cls._pending_clarifications[key]
@@ -76,7 +80,10 @@ class WebSearch:
                 if 1 <= num <= len(options):
                     selected = options[num - 1]
                     del cls._pending_clarifications[query_hash]
-                    return cls._search_wikipedia(selected['search'])
+                    result = cls._search_wikipedia(selected['search'])
+                    if result:
+                        return result
+                    return f"Here's what I found about {selected['name']}: {cls._search_wikipedia(selected['search'])}"
             
             # Check if user replied with text matching any option
             for option in options:
@@ -86,22 +93,30 @@ class WebSearch:
                 if (message_lower in option_name_lower or 
                     option_name_lower in message_lower):
                     del cls._pending_clarifications[query_hash]
-                    return cls._search_wikipedia(option['search'])
+                    result = cls._search_wikipedia(option['search'])
+                    if result:
+                        return result
+                    return f"Here's what I found about {option['name']}: {cls._search_wikipedia(option['search'])}"
                 
-                # Extract keywords from parentheses
+                # Extract keywords from parentheses like (programming language)
                 paren_match = re.search(r'\(([^)]+)\)', option['name'])
                 if paren_match:
                     keyword = paren_match.group(1).lower()
                     if keyword in message_lower or message_lower in keyword:
                         del cls._pending_clarifications[query_hash]
-                        return cls._search_wikipedia(option['search'])
+                        result = cls._search_wikipedia(option['search'])
+                        if result:
+                            return result
+                        return f"Here's what I found about {option['name']}: {cls._search_wikipedia(option['search'])}"
         
         return None
     
     @classmethod
     def _check_ambiguity(cls, term, original_query):
         """Check if term is ambiguous and ask for clarification"""
-        
+        if not term:
+            return None
+            
         # Convert to lowercase for matching
         term_lower = term.lower()
         
@@ -173,6 +188,7 @@ class WebSearch:
         if not query:
             return ""
             
+        original_query = query
         query_lower = query.lower().strip()
         
         # Remove question mark
@@ -203,6 +219,10 @@ class WebSearch:
             if words:
                 query = words[-1]
         
+        # For short ambiguous terms, keep as lowercase for matching
+        if query.lower() in ['python', 'java', 'spring', 'apple', 'amazon', 'windows']:
+            return query.lower()
+        
         # Capitalize first letter
         if query and not query[0].isdigit():
             query = query[0].upper() + query[1:]
@@ -212,6 +232,9 @@ class WebSearch:
     @classmethod
     def _search_wikipedia(cls, term):
         """Search Wikipedia for a term"""
+        if not term:
+            return None
+            
         try:
             # Format the term for URL
             formatted_term = term.replace(' ', '_')
@@ -226,7 +249,7 @@ class WebSearch:
                 data = response.json()
                 if data.get('extract'):
                     extract = cls._clean_extract(data['extract'])
-                    return f"🔍 {extract}"
+                    return extract
             
             # Try search API
             search_url = f'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={term}&format=json'
@@ -245,7 +268,7 @@ class WebSearch:
                         page_data = page_response.json()
                         if page_data.get('extract'):
                             extract = cls._clean_extract(page_data['extract'])
-                            return f"🔍 {extract}"
+                            return extract
             
             return None
         except Exception as e:
