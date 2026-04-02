@@ -18,14 +18,11 @@ class WebSearch:
     _pending_clarifications = {}  # {query_hash: {'options': [...], 'timestamp': ...}}
     
     @classmethod
-    def search_online(cls, query, original_message=None):
+    def search_online(cls, query):
         """Quick search using Wikipedia API with disambiguation support"""
         try:
-            # Use original message if provided (for clarification responses)
-            search_query = original_message if original_message else query
-            
             # FIRST: Check if this is a clarification response to a pending question
-            clarification_result = cls._check_clarification_response(search_query)
+            clarification_result = cls._check_clarification_response(query)
             if clarification_result:
                 return clarification_result
             
@@ -58,7 +55,7 @@ class WebSearch:
         """Check if user is responding to a pending clarification"""
         message_lower = message.lower().strip()
         
-        # Clean up old pending clarifications
+        # Clean up old pending clarifications (older than 2 minutes)
         current_time = datetime.now()
         to_delete = []
         for key, data in cls._pending_clarifications.items():
@@ -71,7 +68,7 @@ class WebSearch:
         for query_hash, pending in list(cls._pending_clarifications.items()):
             options = pending['options']
             
-            # Check if user replied with a number
+            # Check if user replied with a number (1, 2, etc.)
             if message_lower.isdigit():
                 num = int(message_lower)
                 if 1 <= num <= len(options):
@@ -84,21 +81,32 @@ class WebSearch:
                 option_name_lower = option['name'].lower()
                 option_search_lower = option['search'].lower()
                 
-                # Check various matching patterns
-                if (message_lower in option_name_lower or 
-                    option_name_lower in message_lower or
-                    message_lower in option_search_lower or
-                    option_search_lower in message_lower):
-                    # User clarified with name
+                # Direct match
+                if (message_lower == option_name_lower or 
+                    message_lower in option_name_lower or 
+                    option_name_lower in message_lower):
                     del cls._pending_clarifications[query_hash]
                     return cls._search_wikipedia(option['search'])
+                
+                # Check for keywords like "programming", "snake", etc.
+                # Extract keywords from parentheses like (programming language)
+                paren_match = re.search(r'\(([^)]+)\)', option['name'])
+                if paren_match:
+                    keyword = paren_match.group(1).lower()
+                    if keyword in message_lower or message_lower in keyword:
+                        del cls._pending_clarifications[query_hash]
+                        return cls._search_wikipedia(option['search'])
             
-            # Check for keywords like "programming", "snake", etc.
+            # Check for common keywords
             for option in options:
-                # Extract keywords from option name
-                keywords = re.findall(r'\(([^)]+)\)', option['name'])
+                keywords = []
+                if 'programming' in option['name'].lower():
+                    keywords = ['programming', 'language', 'code', 'python code']
+                elif 'snake' in option['name'].lower():
+                    keywords = ['snake', 'reptile', 'serpent', 'animal']
+                
                 for keyword in keywords:
-                    if keyword.lower() in message_lower:
+                    if keyword in message_lower:
                         del cls._pending_clarifications[query_hash]
                         return cls._search_wikipedia(option['search'])
         
@@ -149,25 +157,6 @@ class WebSearch:
             'cricket': [
                 {'name': 'Cricket (sport)', 'search': 'Cricket sport'},
                 {'name': 'Cricket (insect)', 'search': 'Cricket insect'}
-            ],
-            'mercury': [
-                {'name': 'Mercury (planet)', 'search': 'Mercury planet'},
-                {'name': 'Mercury (element)', 'search': 'Mercury element'},
-                {'name': 'Mercury (mythology)', 'search': 'Mercury mythology'}
-            ],
-            'jupiter': [
-                {'name': 'Jupiter (planet)', 'search': 'Jupiter planet'},
-                {'name': 'Jupiter (mythology)', 'search': 'Jupiter mythology'}
-            ],
-            'mars': [
-                {'name': 'Mars (planet)', 'search': 'Mars planet'},
-                {'name': 'Mars (mythology)', 'search': 'Mars mythology'},
-                {'name': 'Mars (candy)', 'search': 'Mars bar'}
-            ],
-            'delta': [
-                {'name': 'Delta (river)', 'search': 'River delta'},
-                {'name': 'Delta (airline)', 'search': 'Delta Air Lines'},
-                {'name': 'Delta (math)', 'search': 'Delta mathematical symbol'}
             ]
         }
         
@@ -176,13 +165,10 @@ class WebSearch:
             # Create a hash key from the original query
             query_hash = original_query.lower().strip()
             
-            # Check if we already asked about this term
+            # Check if we already have a pending clarification for this query
             if query_hash in cls._pending_clarifications:
-                # Already asked, but user didn't give a valid response yet
-                # Return None to let normal search continue? No, keep waiting
-                options = ambiguous_terms[term_lower]
-                options_text = "\n".join([f"• {i+1}. {opt['name']}" for i, opt in enumerate(options)])
-                return f"🔍 **Which {term} do you mean?**\n\n{options_text}\n\nPlease reply with the number (e.g., '1') or name like 'programming language'."
+                # Already asked, waiting for response - don't ask again
+                return None
             
             # First time asking - store and return clarification question
             cls._pending_clarifications[query_hash] = {
