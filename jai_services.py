@@ -12,11 +12,14 @@ logger = logging.getLogger(__name__)
 
 # ========== WEB SEARCH MODULE ==========
 class WebSearch:
-    """Fast and efficient web search"""
+    """Fast and efficient web search with disambiguation"""
+    
+    # Track ambiguous queries that need clarification
+    _pending_clarifications = {}  # {query_hash: {'options': [...], 'timestamp': ...}}
     
     @classmethod
     def search_online(cls, query):
-        """Quick search using Wikipedia API"""
+        """Quick search using Wikipedia API with disambiguation support"""
         try:
             # Clean the query - extract the main subject
             clean_query = cls._extract_subject(query)
@@ -25,6 +28,11 @@ class WebSearch:
             
             logger.info(f"Original query: {query}")
             logger.info(f"Extracted subject: {clean_query}")
+            
+            # Check for ambiguous terms first
+            ambiguous_result = cls._check_ambiguity(clean_query, query)
+            if ambiguous_result:
+                return ambiguous_result
             
             # Try Wikipedia directly
             result = cls._search_wikipedia(clean_query)
@@ -36,6 +44,117 @@ class WebSearch:
         except Exception as e:
             logger.error(f"Search error: {e}")
             return None
+    
+    @classmethod
+    def _check_ambiguity(cls, term, original_query):
+        """Check if term is ambiguous and handle clarification"""
+        
+        # Known ambiguous terms with their possible meanings
+        ambiguous_terms = {
+            'python': [
+                {'name': 'Python (programming language)', 'search': 'Python programming language'},
+                {'name': 'Python (snake)', 'search': 'Python snake'}
+            ],
+            'java': [
+                {'name': 'Java (programming language)', 'search': 'Java programming language'},
+                {'name': 'Java (island)', 'search': 'Java island'},
+                {'name': 'Java (coffee)', 'search': 'Java coffee'}
+            ],
+            'spring': [
+                {'name': 'Spring (season)', 'search': 'Spring season'},
+                {'name': 'Spring (framework)', 'search': 'Spring Framework'}
+            ],
+            'apple': [
+                {'name': 'Apple (company)', 'search': 'Apple Inc'},
+                {'name': 'Apple (fruit)', 'search': 'Apple fruit'}
+            ],
+            'amazon': [
+                {'name': 'Amazon (company)', 'search': 'Amazon.com'},
+                {'name': 'Amazon (rainforest)', 'search': 'Amazon rainforest'}
+            ],
+            'windows': [
+                {'name': 'Windows (operating system)', 'search': 'Microsoft Windows'},
+                {'name': 'Windows (glass)', 'search': 'Window glass'}
+            ],
+            'table': [
+                {'name': 'Table (furniture)', 'search': 'Table furniture'},
+                {'name': 'Table (database)', 'search': 'Database table'}
+            ],
+            'bank': [
+                {'name': 'Bank (financial)', 'search': 'Bank financial institution'},
+                {'name': 'Bank (river)', 'search': 'River bank'}
+            ],
+            'cricket': [
+                {'name': 'Cricket (sport)', 'search': 'Cricket sport'},
+                {'name': 'Cricket (insect)', 'search': 'Cricket insect'}
+            ],
+            'mercury': [
+                {'name': 'Mercury (planet)', 'search': 'Mercury planet'},
+                {'name': 'Mercury (element)', 'search': 'Mercury element'},
+                {'name': 'Mercury (mythology)', 'search': 'Mercury mythology'}
+            ],
+            'jupiter': [
+                {'name': 'Jupiter (planet)', 'search': 'Jupiter planet'},
+                {'name': 'Jupiter (mythology)', 'search': 'Jupiter mythology'}
+            ],
+            'mars': [
+                {'name': 'Mars (planet)', 'search': 'Mars planet'},
+                {'name': 'Mars (mythology)', 'search': 'Mars mythology'},
+                {'name': 'Mars (candy)', 'search': 'Mars bar'}
+            ],
+            'delta': [
+                {'name': 'Delta (river)', 'search': 'River delta'},
+                {'name': 'Delta (airline)', 'search': 'Delta Air Lines'},
+                {'name': 'Delta (math)', 'search': 'Delta mathematical symbol'}
+            ]
+        }
+        
+        term_lower = term.lower()
+        
+        # Clean up old pending clarifications (older than 2 minutes)
+        current_time = datetime.now()
+        to_delete = []
+        for key, data in cls._pending_clarifications.items():
+            if (current_time - data['timestamp']).seconds > 120:
+                to_delete.append(key)
+        for key in to_delete:
+            del cls._pending_clarifications[key]
+        
+        if term_lower in ambiguous_terms:
+            # Create a hash key from the original query to track it
+            query_hash = original_query.lower().strip()
+            
+            # Check if this is a clarification response (number or specific name)
+            for i, option in enumerate(ambiguous_terms[term_lower]):
+                # Check if user replied with number
+                if term_lower == str(i + 1):
+                    # User clarified with number
+                    if query_hash in cls._pending_clarifications:
+                        del cls._pending_clarifications[query_hash]
+                    return cls._search_wikipedia(option['search'])
+                
+                # Check if user replied with part of the option name
+                if option['name'].lower() in term_lower or term_lower in option['name'].lower():
+                    if query_hash in cls._pending_clarifications:
+                        del cls._pending_clarifications[query_hash]
+                    return cls._search_wikipedia(option['search'])
+            
+            # Not a clarification response - check if we already asked
+            if query_hash in cls._pending_clarifications:
+                # Already asked, user gave unclear response, ask again
+                options_text = "\n".join([f"• {i+1}. {opt['name']}" for i, opt in enumerate(ambiguous_terms[term_lower])])
+                return f"🔍 **Which {term} do you mean?**\n\n{options_text}\n\nPlease reply with the number (e.g., '1') or full name."
+            
+            # First time asking - store and return clarification question
+            cls._pending_clarifications[query_hash] = {
+                'options': ambiguous_terms[term_lower],
+                'timestamp': datetime.now()
+            }
+            
+            options_text = "\n".join([f"• {i+1}. {opt['name']}" for i, opt in enumerate(ambiguous_terms[term_lower])])
+            return f"🔍 **Which {term} do you mean?**\n\n{options_text}\n\nReply with the number (e.g., '1') or name."
+        
+        return None
     
     @classmethod
     def _extract_subject(cls, query):
@@ -71,12 +190,14 @@ class WebSearch:
                 # Get the last word (likely the subject)
                 query = words[-1]
         
+        # Handle numbers (clarification responses)
+        if query.isdigit() or (len(query) == 1 and query.isdigit()):
+            return query
+        
         # Capitalize first letter for Wikipedia
-        if query:
+        if query and not query[0].isdigit():
             query = query[0].upper() + query[1:]
         
-        # Handle multi-word subjects (like "Toyota", "Elon Musk")
-        # Don't split if it's a name
         return query
     
     @classmethod
@@ -95,15 +216,7 @@ class WebSearch:
             if response.status_code == 200:
                 data = response.json()
                 if data.get('extract'):
-                    extract = data['extract']
-                    # Remove parentheticals
-                    extract = re.sub(r'\([^)]*\)', '', extract)
-                    # Clean up whitespace
-                    extract = ' '.join(extract.split())
-                    # Limit length
-                    if len(extract) > 600:
-                        extract = extract[:600] + "..."
-                    logger.info(f"Found Wikipedia page for: {term}")
+                    extract = cls._clean_extract(data['extract'])
                     return extract
             
             # Try search API if direct page fails
@@ -124,17 +237,25 @@ class WebSearch:
                     if page_response.status_code == 200:
                         page_data = page_response.json()
                         if page_data.get('extract'):
-                            extract = page_data['extract']
-                            extract = re.sub(r'\([^)]*\)', '', extract)
-                            extract = ' '.join(extract.split())
-                            if len(extract) > 600:
-                                extract = extract[:600] + "..."
+                            extract = cls._clean_extract(page_data['extract'])
                             return extract
             
             return None
         except Exception as e:
             logger.error(f"Wikipedia search error: {e}")
             return None
+    
+    @classmethod
+    def _clean_extract(cls, extract):
+        """Clean and truncate Wikipedia extract"""
+        # Remove parentheticals
+        extract = re.sub(r'\([^)]*\)', '', extract)
+        # Clean up whitespace
+        extract = ' '.join(extract.split())
+        # Limit length
+        if len(extract) > 800:
+            extract = extract[:800] + "..."
+        return extract
     
     @classmethod
     def should_search(cls, message):
