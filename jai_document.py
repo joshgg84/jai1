@@ -88,49 +88,45 @@ class DocumentHandler:
         # Detect document type
         text_lower = text.lower()
         if any(word in text_lower for word in ['contract', 'agreement', 'terms', 'party', 'hereby']):
-            doc_type = "legal"
             icon = "⚖️"
             doc_name = "Legal Document"
         elif any(word in text_lower for word in ['exam', 'test', 'question', 'student', 'course']):
-            doc_type = "educational"
             icon = "📚"
             doc_name = "Educational Document"
         elif any(word in text_lower for word in ['invoice', 'payment', 'amount', 'due']):
-            doc_type = "financial"
             icon = "💰"
             doc_name = "Financial Document"
         else:
-            doc_type = "general"
             icon = "📄"
             doc_name = "Document"
         
-        # Extract key points
+        # Extract key points (first 3-5 substantial sentences)
         sentences = re.split(r'[.!?]+', text)
-        key_points = [s.strip() for s in sentences if len(s.strip()) > 30][:5]
+        key_points = []
+        for s in sentences:
+            s = s.strip()
+            if len(s) > 30 and len(key_points) < 5:
+                key_points.append(s)
         
         # Build response
         simplified = f"{icon} **{doc_name} Simplified**\n\n"
-        simplified += f"**Original:** {filename}\n"
+        simplified += f"**File:** {filename}\n"
         simplified += f"**Length:** {len(text)} characters\n\n"
         
         if key_points:
-            simplified += f"**Key Points:**\n\n"
+            simplified += f"**Main Points:**\n\n"
             for i, point in enumerate(key_points, 1):
+                # Truncate long points
+                if len(point) > 200:
+                    point = point[:197] + "..."
                 simplified += f"{i}. {point}\n\n"
         else:
-            preview = text[:500] + "..." if len(text) > 500 else text
+            preview = text[:400] + "..." if len(text) > 400 else text
             simplified += f"**Content:**\n\n{preview}\n\n"
         
-        # Add tips
-        tips = {
-            "legal": "⚠️ Read carefully. Consider professional advice for important matters.",
-            "educational": "📖 Review key points and ask questions about unclear concepts.",
-            "financial": "💵 Verify all amounts and dates carefully.",
-            "general": "💡 Review the information and ask if anything is unclear."
-        }
-        simplified += f"**Tip:** {tips.get(doc_type, tips['general'])}"
+        simplified += f"**💡 Tip:** Ask me specific questions like 'What does this say about [topic]?' or 'Summarize the main points'"
         
-        return simplified, doc_type
+        return simplified
     
     @staticmethod
     def answer_question(doc_id, question):
@@ -142,42 +138,90 @@ class DocumentHandler:
         content = doc['content']
         filename = doc['filename']
         
-        question_lower = question.lower()
+        question_lower = question.lower().strip()
+        
+        # Handle empty or very short questions
+        if len(question_lower) < 5:
+            return f"💡 **Ask me about '{filename}':**\n\nTry asking:\n• 'What is this document about?'\n• 'Summarize the key points'\n• 'Tell me about [specific topic]'\n• 'What does it say regarding...'"
         
         # Summary request
-        if any(word in question_lower for word in ['summary', 'overview', 'what is this about']):
-            return f"📋 **Summary of '{filename}':**\n\n{doc['simplified'][:400]}...\n\nAsk me about specific parts!"
+        if any(word in question_lower for word in ['summary', 'overview', 'what is this about', 'tell me about', 'what does it say']):
+            # Get first few key sentences
+            sentences = re.split(r'[.!?]+', content)
+            summary_points = []
+            for s in sentences[:10]:
+                s = s.strip()
+                if len(s) > 30:
+                    summary_points.append(s)
+            
+            if summary_points:
+                response = f"📋 **Summary of '{filename}':**\n\n"
+                for i, point in enumerate(summary_points[:4], 1):
+                    if len(point) > 200:
+                        point = point[:197] + "..."
+                    response += f"{i}. {point}\n\n"
+                response += "Anything specific you'd like to know more about?"
+                return response
+            else:
+                preview = content[:500] + "..." if len(content) > 500 else content
+                return f"📋 **From '{filename}':**\n\n{preview}\n\nWhat specific information are you looking for?"
         
-        # Keyword search
-        keywords = re.findall(r'\b\w+\b', question_lower)
-        keywords = [k for k in keywords if len(k) > 3 and k not in ['what', 'does', 'this', 'that', 'tell', 'about']]
+        # Search for keywords in content
+        # Extract meaningful words from question
+        keywords = re.findall(r'\b[a-z]{4,}\b', question_lower)
+        # Remove common words
+        stopwords = {'what', 'does', 'this', 'that', 'tell', 'about', 'from', 'with', 'have', 'were', 'there', 'their', 'they', 'will', 'would', 'could', 'should', 'been', 'being', 'some', 'such', 'than', 'then', 'these', 'those'}
+        keywords = [k for k in keywords if k not in stopwords]
         
-        for keyword in keywords[:3]:
+        # Search for each keyword
+        found_info = []
+        for keyword in keywords[:5]:
             if keyword in content.lower():
+                # Find sentences containing keyword
                 sentences = re.split(r'[.!?]+', content)
                 for sentence in sentences:
                     if keyword in sentence.lower() and len(sentence.strip()) > 20:
-                        return f"📖 **About '{keyword}':**\n{sentence.strip()}\n\nAnything else?"
+                        sentence = sentence.strip()
+                        if len(sentence) > 300:
+                            sentence = sentence[:297] + "..."
+                        found_info.append((keyword, sentence))
+                        break
         
-        # Fallback
-        preview = content[:400] + "..." if len(content) > 400 else content
-        return f"📄 **From '{filename}':**\n\n{preview}\n\nCould you be more specific about what you're looking for?"
+        if found_info:
+            response = f"📖 **About your document '{filename}':**\n\n"
+            for keyword, sentence in found_info[:3]:
+                response += f"**• {keyword.capitalize()}:** {sentence}\n\n"
+            response += "Does that help? Ask me more questions!"
+            return response
+        
+        # If no keywords found, offer help
+        if len(content) > 100:
+            preview = content[:300] + "..." if len(content) > 300 else content
+            return f"📄 **From '{filename}':**\n\n{preview}\n\nI couldn't find specific information about that. Could you rephrase your question or ask about a different topic?"
+        else:
+            return f"📄 **Document content:**\n\n{content}\n\nWhat would you like to know about this?"
     
     @staticmethod
-    def store_document(filename, text, simplified, doc_type):
+    def store_document(filename, text, simplified):
         """Store document and return ID"""
         doc_id = datetime.now().strftime("%Y%m%d%H%M%S")
         _documents[doc_id] = {
             'filename': filename,
             'content': text,
             'simplified': simplified,
-            'type': doc_type,
             'created_at': datetime.now(),
             'size': len(text)
         }
+        logger.info(f"Document stored with ID: {doc_id}, size: {len(text)} chars")
         return doc_id
     
     @staticmethod
     def get_document(doc_id):
         """Get document by ID"""
         return _documents.get(doc_id)
+    
+    @staticmethod
+    def get_all_documents():
+        """Get all documents (for debugging)"""
+        return {doc_id: {'filename': doc['filename'], 'size': doc['size']} 
+                for doc_id, doc in _documents.items()}
