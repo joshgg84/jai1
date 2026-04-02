@@ -76,22 +76,25 @@ class WebSearch:
         """Determine if message should trigger web search"""
         msg_lower = message.lower()
         
-        # Question words that indicate factual query
-        question_triggers = [
-            'what is', 'who is', 'where is', 'when is', 'why is', 'how to',
-            'tell me about', 'explain', 'define', 'meaning of', 'what are',
-            'who was', 'what does', 'how does', 'why do', 'when did'
-        ]
+        # ALWAYS search for questions with "who", "what", "where", "when", "why", "how"
+        question_words = ['who is', 'what is', 'where is', 'when is', 'why is', 'how to',
+                         'who was', 'what was', 'what are', 'who are', 'tell me about',
+                         'explain', 'define', 'meaning of', 'information about']
         
-        for trigger in question_triggers:
-            if trigger in msg_lower:
+        for word in question_words:
+            if word in msg_lower:
                 return True
         
-        # Questions with question mark and more than 3 words
-        if '?' in message and len(message.split()) > 3:
-            # Don't search for personal/greeting questions
-            personal_patterns = ['how are you', 'how you doing', 'what about you']
-            if not any(p in msg_lower for p in personal_patterns):
+        # Also search if message ends with question mark and has more than 3 words
+        if message.strip().endswith('?') and len(message.split()) > 3:
+            return True
+        
+        # Search for specific factual queries
+        factual_patterns = ['capital of', 'population of', 'president of', 'ceo of',
+                           'founder of', 'inventor of', 'history of', 'facts about']
+        
+        for pattern in factual_patterns:
+            if pattern in msg_lower:
                 return True
         
         return False
