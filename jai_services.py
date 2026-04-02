@@ -16,36 +16,40 @@ class WebSearch:
     
     @classmethod
     def search_online(cls, query):
-        """Search online using DuckDuckGo API"""
+        """Search online using multiple APIs"""
         try:
             encoded_query = requests.utils.quote(query)
-            url = f'https://api.duckduckgo.com/?q={encoded_query}&format=json&no_html=1&skip_disambig=1'
-            response = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
             
-            if response.status_code == 200:
-                data = response.json()
+            # Try Wikipedia API first (most reliable)
+            wiki_url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{encoded_query}'
+            wiki_response = requests.get(wiki_url, timeout=10)
+            
+            if wiki_response.status_code == 200:
+                wiki_data = wiki_response.json()
+                if wiki_data.get('extract'):
+                    extract = wiki_data['extract']
+                    # Clean up the extract
+                    extract = re.sub(r'\([^)]*\)', '', extract)
+                    extract = ' '.join(extract.split())
+                    if len(extract) > 50:
+                        logger.info(f"Wikipedia search successful for: {query}")
+                        return extract
+            
+            # Try DuckDuckGo API
+            ddg_url = f'https://api.duckduckgo.com/?q={encoded_query}&format=json&no_html=1'
+            ddg_response = requests.get(ddg_url, timeout=10)
+            
+            if ddg_response.status_code == 200:
+                data = ddg_response.json()
                 
-                # Try to get AbstractText first
                 if data.get('AbstractText'):
                     return data['AbstractText']
-                
-                # Try Definition
-                if data.get('Definition'):
+                elif data.get('Definition'):
                     return data['Definition']
-                
-                # Try Answer
-                if data.get('Answer'):
+                elif data.get('Answer'):
                     return data['Answer']
-                
-                # Try RelatedTopics
-                if data.get('RelatedTopics'):
-                    for topic in data['RelatedTopics']:
-                        if isinstance(topic, dict) and topic.get('Text'):
-                            text = topic['Text']
-                            if len(text) > 50:
-                                return text
-                
-                return None
+            
+            return None
                 
         except Exception as e:
             logger.error(f"Search error: {e}")
@@ -56,24 +60,25 @@ class WebSearch:
         """Determine if message should trigger web search"""
         msg_lower = message.lower().strip()
         
-        # Question words that should ALWAYS trigger search
+        # Question words that trigger search
         question_triggers = [
             'who is', 'who was', 'who are',
-            'what is', 'what was', 'what are', 'what does', 'what do',
+            'what is', 'what was', 'what are', 'what does',
             'where is', 'where was', 'where are',
             'when is', 'when was', 'when did',
-            'why is', 'why was', 'why did', 'why do',
-            'how to', 'how do', 'how does', 'how is',
-            'tell me about', 'explain', 'define', 'meaning of',
-            'capital of', 'population of', 'president of'
+            'why is', 'why was', 'why did',
+            'how to', 'how do', 'how does',
+            'tell me about', 'explain', 'define'
         ]
         
         for trigger in question_triggers:
-            if msg_lower.startswith(trigger) or trigger in msg_lower:
+            if msg_lower.startswith(trigger):
+                logger.info(f"Search triggered by: {trigger}")
                 return True
         
-        # If message ends with question mark and has content
+        # If message ends with question mark
         if message.strip().endswith('?'):
+            logger.info("Search triggered by question mark")
             return True
         
         return False
@@ -113,6 +118,7 @@ class Weather:
                 parts = msg_lower.split('in')
                 if len(parts) > 1:
                     city = parts[1].strip().split()[0]
+                    city = re.sub(r'[^\w\s]', '', city)
             return cls.get_weather(city)
         return None
 
@@ -124,7 +130,6 @@ class Calculator:
     @staticmethod
     def calculate(expr):
         try:
-            # Clean the expression
             expr = expr.replace('plus', '+').replace('minus', '-')
             expr = expr.replace('times', '*').replace('divided by', '/')
             expr = re.sub(r"[^0-9+\-*/%.() ]", "", expr)
