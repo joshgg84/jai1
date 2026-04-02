@@ -1,5 +1,6 @@
 """JAI - Document Intelligence Module
 Handles document upload, text extraction, simplification, and Q&A.
+Stores documents per user - no ID needed!
 """
 
 import base64
@@ -21,12 +22,12 @@ except ImportError as e:
     DOCUMENT_SUPPORT = False
     logger.warning(f"Document processing libraries not installed: {e}")
 
-# Store documents in memory
-_documents = {}
+# Store documents per user (client_id)
+_user_documents = {}  # {client_id: {'filename': str, 'content': str, 'simplified': str, 'created_at': datetime}}
 
 
 class DocumentHandler:
-    """Handle document upload and processing"""
+    """Handle document upload and processing per user"""
     
     @staticmethod
     def extract_text_from_base64(base64_content, filename):
@@ -100,12 +101,14 @@ class DocumentHandler:
             icon = "📄"
             doc_name = "Document"
         
-        # Extract key points (first 3-5 substantial sentences)
+        # Extract key points
         sentences = re.split(r'[.!?]+', text)
         key_points = []
         for s in sentences:
             s = s.strip()
             if len(s) > 30 and len(key_points) < 5:
+                if len(s) > 200:
+                    s = s[:197] + "..."
                 key_points.append(s)
         
         # Build response
@@ -116,49 +119,77 @@ class DocumentHandler:
         if key_points:
             simplified += f"**Main Points:**\n\n"
             for i, point in enumerate(key_points, 1):
-                # Truncate long points
-                if len(point) > 200:
-                    point = point[:197] + "..."
                 simplified += f"{i}. {point}\n\n"
         else:
             preview = text[:400] + "..." if len(text) > 400 else text
             simplified += f"**Content:**\n\n{preview}\n\n"
         
-        simplified += f"**💡 Tip:** Ask me specific questions like 'What does this say about [topic]?' or 'Summarize the main points'"
+        simplified += f"**💡 Now you can ask me anything about this document!** Just type your question naturally."
         
         return simplified
     
     @staticmethod
-    def answer_question(doc_id, question):
-        """Answer questions about a document"""
-        if doc_id not in _documents:
+    def store_document(client_id, filename, text, simplified):
+        """Store document for a specific user"""
+        _user_documents[client_id] = {
+            'filename': filename,
+            'content': text,
+            'simplified': simplified,
+            'created_at': datetime.now(),
+            'size': len(text)
+        }
+        logger.info(f"Document stored for user: {client_id}, size: {len(text)} chars")
+        return True
+    
+    @staticmethod
+    def get_user_document(client_id):
+        """Get document for a specific user"""
+        return _user_documents.get(client_id)
+    
+    @staticmethod
+    def has_document(client_id):
+        """Check if user has a document loaded"""
+        return client_id in _user_documents
+    
+    @staticmethod
+    def clear_document(client_id):
+        """Clear document for a user"""
+        if client_id in _user_documents:
+            del _user_documents[client_id]
+            logger.info(f"Document cleared for user: {client_id}")
+            return True
+        return False
+    
+    @staticmethod
+    def answer_question(client_id, question):
+        """Answer questions about user's document"""
+        doc = DocumentHandler.get_user_document(client_id)
+        
+        if not doc:
             return None
         
-        doc = _documents[doc_id]
         content = doc['content']
         filename = doc['filename']
-        
         question_lower = question.lower().strip()
         
-        # Handle empty or very short questions
+        # Handle empty/short questions
         if len(question_lower) < 5:
-            return f"💡 **Ask me about '{filename}':**\n\nTry asking:\n• 'What is this document about?'\n• 'Summarize the key points'\n• 'Tell me about [specific topic]'\n• 'What does it say regarding...'"
+            return f"💡 **Ask about '{filename}':**\n\nTry:\n• What is this document about?\n• Summarize the key points\n• Tell me about [specific topic]"
         
         # Summary request
         if any(word in question_lower for word in ['summary', 'overview', 'what is this about', 'tell me about', 'what does it say']):
-            # Get first few key sentences
             sentences = re.split(r'[.!?]+', content)
             summary_points = []
-            for s in sentences[:10]:
+            for s in sentences[:8]:
                 s = s.strip()
                 if len(s) > 30:
+                    if len(s) > 200:
+                        s = s[:197] + "..."
                     summary_points.append(s)
             
             if summary_points:
                 response = f"📋 **Summary of '{filename}':**\n\n"
                 for i, point in enumerate(summary_points[:4], 1):
-                    if len(point) > 200:
-                        point = point[:197] + "..."
                     response += f"{i}. {point}\n\n"
                 response += "Anything specific you'd like to know more about?"
                 return response
@@ -166,18 +197,14 @@ class DocumentHandler:
                 preview = content[:500] + "..." if len(content) > 500 else content
                 return f"📋 **From '{filename}':**\n\n{preview}\n\nWhat specific information are you looking for?"
         
-        # Search for keywords in content
-        # Extract meaningful words from question
+        # Search for keywords
         keywords = re.findall(r'\b[a-z]{4,}\b', question_lower)
-        # Remove common words
-        stopwords = {'what', 'does', 'this', 'that', 'tell', 'about', 'from', 'with', 'have', 'were', 'there', 'their', 'they', 'will', 'would', 'could', 'should', 'been', 'being', 'some', 'such', 'than', 'then', 'these', 'those'}
+        stopwords = {'what', 'does', 'this', 'that', 'tell', 'about', 'from', 'with', 'have', 'were', 'there', 'their', 'they', 'will', 'would', 'could', 'should'}
         keywords = [k for k in keywords if k not in stopwords]
         
-        # Search for each keyword
         found_info = []
         for keyword in keywords[:5]:
             if keyword in content.lower():
-                # Find sentences containing keyword
                 sentences = re.split(r'[.!?]+', content)
                 for sentence in sentences:
                     if keyword in sentence.lower() and len(sentence.strip()) > 20:
@@ -188,40 +215,12 @@ class DocumentHandler:
                         break
         
         if found_info:
-            response = f"📖 **About your document '{filename}':**\n\n"
+            response = f"📖 **About your document:**\n\n"
             for keyword, sentence in found_info[:3]:
                 response += f"**• {keyword.capitalize()}:** {sentence}\n\n"
-            response += "Does that help? Ask me more questions!"
+            response += "Does that help? Ask me more!"
             return response
         
-        # If no keywords found, offer help
-        if len(content) > 100:
-            preview = content[:300] + "..." if len(content) > 300 else content
-            return f"📄 **From '{filename}':**\n\n{preview}\n\nI couldn't find specific information about that. Could you rephrase your question or ask about a different topic?"
-        else:
-            return f"📄 **Document content:**\n\n{content}\n\nWhat would you like to know about this?"
-    
-    @staticmethod
-    def store_document(filename, text, simplified):
-        """Store document and return ID"""
-        doc_id = datetime.now().strftime("%Y%m%d%H%M%S")
-        _documents[doc_id] = {
-            'filename': filename,
-            'content': text,
-            'simplified': simplified,
-            'created_at': datetime.now(),
-            'size': len(text)
-        }
-        logger.info(f"Document stored with ID: {doc_id}, size: {len(text)} chars")
-        return doc_id
-    
-    @staticmethod
-    def get_document(doc_id):
-        """Get document by ID"""
-        return _documents.get(doc_id)
-    
-    @staticmethod
-    def get_all_documents():
-        """Get all documents (for debugging)"""
-        return {doc_id: {'filename': doc['filename'], 'size': doc['size']} 
-                for doc_id, doc in _documents.items()}
+        # Fallback
+        preview = content[:400] + "..." if len(content) > 400 else content
+        return f"📄 **From '{filename}':**\n\n{preview}\n\nCould you rephrase your question or ask about a specific topic?"
