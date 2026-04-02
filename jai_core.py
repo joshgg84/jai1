@@ -88,8 +88,7 @@ class JAIPersonality:
         # GENERAL KNOWLEDGE - SEARCH ONLINE FIRST
         if is_general_knowledge:
             logger.info(f"Searching online for: {original_message}")
-            # Pass the original message for clarification detection
-            search_result = WebSearch.search_online(original_message, original_message)
+            search_result = WebSearch.search_online(original_message)
             if search_result:
                 JAIMemory.save_conversation(client_id, original_message, search_result)
                 return search_result
