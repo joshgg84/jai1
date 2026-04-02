@@ -15,7 +15,7 @@ from jai_currency import JAICurrency
 from jai_grammar import JAIGrammar
 from jai_grammar_long import JAIGrammarLong
 from jai_memory import JAIMemory
-from jai_services import WebSearch, Weather, Calculator, TimeService, GeneralKnowledge
+from jai_services import WebSearch, Weather, Calculator, TimeService
 from jai_document import DocumentHandler
 
 logger = logging.getLogger(__name__)
@@ -59,89 +59,72 @@ class JAIPersonality:
                 logger.error(f"Document upload error: {e}")
                 return f"❌ Error: {str(e)}"
         
-        # ========== WEATHER ==========
-        weather_response = Weather.detect_weather_query(original_message)
-        if weather_response:
-            JAIMemory.save_conversation(client_id, original_message, weather_response)
-            return weather_response
+        # ========== CHECK FOR GENERAL KNOWLEDGE QUESTIONS (ALWAYS SEARCH FIRST) ==========
+        # These patterns should ALWAYS trigger web search, regardless of document
+        general_knowledge_patterns = [
+            r'^who created', r'^who founded', r'^who invented', r'^who discovered',
+            r'^who is', r'^who was', r'^who are',
+            r'^what is', r'^what was', r'^what are', r'^what does',
+            r'^where is', r'^where was', r'^where are',
+            r'^when is', r'^when was', r'^when did',
+            r'^why is', r'^why was', r'^why did',
+            r'^how to', r'^how do', r'^how does',
+            r'tell me about', r'explain', r'define', r'meaning of'
+        ]
         
-        # ========== WEB SEARCH (for general knowledge questions) ==========
-        # Check if this is a general knowledge question (not document-specific)
-        is_general = GeneralKnowledge.is_general_question(original_message)
+        is_general_knowledge = False
+        for pattern in general_knowledge_patterns:
+            if re.search(pattern, msg):
+                is_general_knowledge = True
+                break
         
-        if is_general or (not DocumentHandler.has_document(client_id) and ('?' in original_message or original_message.lower().startswith(('who ', 'what ', 'where ', 'when ', 'why ', 'how ')))):
+        # Also check if message ends with question mark
+        if original_message.strip().endswith('?'):
+            is_general_knowledge = True
+        
+        # GENERAL KNOWLEDGE - SEARCH ONLINE FIRST
+        if is_general_knowledge:
             search_result = WebSearch.search_online(original_message)
             if search_result:
                 response = f"🔍 {search_result}"
                 JAIMemory.save_conversation(client_id, original_message, response)
                 return response
         
-        # ========== DOCUMENT INTELLIGENCE (if document loaded) ==========
+        # ========== WEATHER ==========
+        weather_response = Weather.detect_weather_query(original_message)
+        if weather_response:
+            JAIMemory.save_conversation(client_id, original_message, weather_response)
+            return weather_response
+        
+        # ========== DOCUMENT INTELLIGENCE (if document loaded and not general knowledge) ==========
         if DocumentHandler.has_document(client_id):
-            # Check if question is document-specific
             doc = DocumentHandler.get_user_document(client_id)
             if doc:
-                # Answer from document
-                doc_answer = DocumentHandler.answer_question(client_id, original_message)
-                if doc_answer and not doc_answer.startswith("🔍"):
-                    JAIMemory.save_conversation(client_id, original_message, doc_answer)
-                    return doc_answer
-        
-        # ========== MEMORY ==========
-        
-        # Check for "next time say" patterns
-        next_time_response = JAIMemory.get_next_time_say_response(client_id, original_message)
-        if next_time_response:
-            return next_time_response
-        
-        # Check taught responses
-        taught_response = JAIMemory.get_taught_response(client_id, original_message)
-        if taught_response:
-            return taught_response
-        
-        # Extract and save user facts
-        learned_facts = JAIMemory.extract_and_save_user_fact(client_id, original_message)
-        if learned_facts:
-            for fact_key, fact_value in learned_facts:
-                if fact_key == "name":
-                    return f"Nice to meet you, {fact_value}! I'll remember that. 😊"
-                elif fact_key == "age":
-                    return f"Got it! You're {fact_value} years old!"
-                elif fact_key == "location":
-                    return f"Cool! {fact_value} is a great place!"
-        
-        # Get user facts for personalization
-        user_facts = JAIMemory.get_user_facts(client_id)
-        user_name = user_facts.get("name", None)
-        
-        # ========== LEARNING PATTERNS ==========
-        
-        # Next time say teaching
-        next_time_pattern = re.search(r'next time .+? say[s]? ["\']?(.+?)["\']?\s+(?:say|respond with) ["\']?(.+?)["\']?', msg, re.IGNORECASE)
-        if next_time_pattern:
-            trigger = next_time_pattern.group(1).strip()
-            response = next_time_pattern.group(2).strip()
-            JAIMemory.learn_next_time_say(client_id, trigger, response)
-            return f"📚 Got it! Next time someone says '{trigger}', I'll respond with '{response}'"
-        
-        # Direct teaching
-        teach_pattern = re.search(r'teach ["\']?(.+?)["\']?\s*->\s*["\']?(.+?)["\']?', msg, re.IGNORECASE)
-        if teach_pattern:
-            trigger = teach_pattern.group(1).strip()
-            response = teach_pattern.group(2).strip()
-            JAIMemory.teach_response(client_id, trigger, response)
-            return f"✅ Learned! When you say '{trigger}', I'll respond with '{response}'"
+                # Check if question is about the document (contains keywords from document)
+                content_lower = doc['content'].lower()
+                question_words = set(re.findall(r'\b[a-z]{4,}\b', msg))
+                stopwords = {'what', 'does', 'this', 'that', 'tell', 'about', 'from', 'with', 'have', 'were', 'there', 'their', 'they', 'will', 'would', 'could', 'should', 'type', 'code', 'language', 'file', 'document', 'please', 'help', 'know', 'want', 'need', 'can', 'you', 'the', 'and', 'for', 'are', 'not', 'explain', 'mean', 'meaning'}
+                question_words = question_words - stopwords
+                
+                # If question contains document keywords, answer from document
+                doc_keywords_found = 0
+                for word in question_words:
+                    if word in content_lower:
+                        doc_keywords_found += 1
+                
+                if doc_keywords_found > 0 or len(question_words) == 0:
+                    doc_answer = DocumentHandler.answer_question(client_id, original_message)
+                    if doc_answer:
+                        JAIMemory.save_conversation(client_id, original_message, doc_answer)
+                        return doc_answer
         
         # ========== CALCULATIONS ==========
-        
-        # Percent calculations
         percent_match = re.search(r'(\d+)\s*percent\s*of\s*(\d+)', msg)
         if percent_match:
             calc_result = Calculator.calculate(original_message)
             if calc_result:
                 return calc_result
         
-        # Math with numbers
         has_numbers = len(re.findall(r'\d+', original_message)) >= 2
         has_math_op = any(op in msg for op in ['+', '-', '*', '/', '%'])
         if has_numbers and has_math_op:
@@ -160,85 +143,102 @@ class JAIPersonality:
         if "date" in msg:
             return TimeService.get_date()
         
+        # ========== MEMORY ==========
+        next_time_response = JAIMemory.get_next_time_say_response(client_id, original_message)
+        if next_time_response:
+            return next_time_response
+        
+        taught_response = JAIMemory.get_taught_response(client_id, original_message)
+        if taught_response:
+            return taught_response
+        
+        # Extract user facts
+        learned_facts = JAIMemory.extract_and_save_user_fact(client_id, original_message)
+        if learned_facts:
+            for fact_key, fact_value in learned_facts:
+                if fact_key == "name":
+                    return f"Nice to meet you, {fact_value}! I'll remember that. 😊"
+                elif fact_key == "age":
+                    return f"Got it! You're {fact_value} years old!"
+                elif fact_key == "location":
+                    return f"Cool! {fact_value} is a great place!"
+        
+        user_facts = JAIMemory.get_user_facts(client_id)
+        user_name = user_facts.get("name", None)
+        
+        # ========== LEARNING PATTERNS ==========
+        next_time_pattern = re.search(r'next time .+? say[s]? ["\']?(.+?)["\']?\s+(?:say|respond with) ["\']?(.+?)["\']?', msg, re.IGNORECASE)
+        if next_time_pattern:
+            trigger = next_time_pattern.group(1).strip()
+            response = next_time_pattern.group(2).strip()
+            JAIMemory.learn_next_time_say(client_id, trigger, response)
+            return f"📚 Got it! Next time someone says '{trigger}', I'll respond with '{response}'"
+        
+        teach_pattern = re.search(r'teach ["\']?(.+?)["\']?\s*->\s*["\']?(.+?)["\']?', msg, re.IGNORECASE)
+        if teach_pattern:
+            trigger = teach_pattern.group(1).strip()
+            response = teach_pattern.group(2).strip()
+            JAIMemory.teach_response(client_id, trigger, response)
+            return f"✅ Learned! When you say '{trigger}', I'll respond with '{response}'"
+        
         # ========== GREETINGS ==========
         if any(g in msg for g in ["good morning", "morning"]):
-            return f"Good morning{', ' + user_name if user_name else ''}! 🌅 Hope you have a great day!"
-        
+            return f"Good morning{', ' + user_name if user_name else ''}! 🌅"
         if any(g in msg for g in ["good afternoon", "afternoon"]):
-            return f"Good afternoon{', ' + user_name if user_name else ''}! 🌞 How's your day going?"
-        
+            return f"Good afternoon{', ' + user_name if user_name else ''}! 🌞"
         if any(g in msg for g in ["good evening", "evening"]):
-            return f"Good evening{', ' + user_name if user_name else ''}! 🌙 Hope you had a productive day!"
-        
+            return f"Good evening{', ' + user_name if user_name else ''}! 🌙"
         if any(g in msg for g in ["good night", "night"]):
-            return "Good night! 🌙 Rest well. Tomorrow is another chance!"
+            return "Good night! 🌙"
         
         if any(g in msg for g in ["hi", "hello", "hey", "howdy"]):
             if user_name:
-                return f"Hello {user_name}! 😊 How can I help you today?\n\n📄 Upload a document\n🔍 Ask a question\n💬 Just chat"
-            
-            doc_status = ""
-            if DocumentHandler.has_document(client_id):
-                doc = DocumentHandler.get_user_document(client_id)
-                doc_status = f"\n\n📄 **You have a document loaded:** '{doc['filename']}'\nAsk me questions about it!"
-            
-            return f"Hello! 😊 I can help you with:\n\n📄 **Documents** - Upload PDF/DOCX/TXT\n🔍 **Search** - Ask me anything\n🌤️ **Weather** - Check conditions\n💰 **Currency** - Live rates\n🧮 **Calculate** - Math problems{doc_status}\n\nWhat would you like?"
+                return f"Hello {user_name}! 😊 How can I help?\n\n📄 Upload a document\n🔍 Ask a question\n💬 Just chat"
+            return "Hello! 😊 Ask me anything! I can search online, check weather, convert currency, or read documents."
         
         # ========== HOW ARE YOU ==========
-        if any(h in msg for h in ["how are you", "how you doing", "how's it going"]):
-            return "I'm doing great! Thanks for asking. How about you?"
+        if any(h in msg for h in ["how are you", "how you doing"]):
+            return "I'm doing great! Thanks for asking!"
         
         # ========== THANKS ==========
-        if any(t in msg for t in ["thank", "thanks", "thx"]):
-            return "You're welcome! 😊 Happy to help!"
+        if any(t in msg for t in ["thank", "thanks"]):
+            return "You're welcome! 😊"
         
         # ========== GOODBYE ==========
-        if any(g in msg for g in ["bye", "goodbye", "see you", "later"]):
-            return "Goodbye! Take care and come back anytime! 👋"
+        if any(g in msg for g in ["bye", "goodbye", "see you"]):
+            return "Goodbye! Take care! 👋"
         
         # ========== CREATOR ==========
-        if any(c in msg for c in ["who made you", "who created you", "your creator"]):
-            return "I was created by **Joshua Giwa** from Yukuben Village, Nigeria! 🇳🇬 He built me to help people understand documents and answer questions."
+        if any(c in msg for c in ["who made you", "who created you"]):
+            return "I was created by Joshua Giwa from Yukuben Village, Nigeria! 🇳🇬"
         
         # ========== CAPABILITIES ==========
-        if any(c in msg for c in ["what can you do", "your skills", "capabilities", "help", "features"]):
+        if any(c in msg for c in ["what can you do", "your skills", "help"]):
             doc_status = ""
             if DocumentHandler.has_document(client_id):
                 doc = DocumentHandler.get_user_document(client_id)
-                doc_status = f"\n\n📄 **You have a document loaded:** '{doc['filename']}'\n• Ask me questions about it naturally!"
-            else:
-                doc_status = "\n\n📄 **No document loaded** - Upload one to get started!"
-            
-            return f"📚 **JAI's Capabilities**\n\n" \
-                   f"📄 **Document Intelligence**\n• Upload PDF, DOCX, or TXT files\n• I'll simplify and explain them\n• Ask questions about your documents naturally\n\n" \
-                   f"🔍 **Web Search**\n• Answer factual questions\n• Find information online\n\n" \
-                   f"🌤️ **Weather**\n• Current conditions anywhere\n• Temperature and forecasts\n\n" \
-                   f"💰 **Currency**\n• Live exchange rates\n• Convert between currencies\n\n" \
-                   f"🧮 **Calculator**\n• Math calculations\n• Percentages and more\n\n" \
-                   f"💾 **Memory**\n• I remember what you teach me\n• Learn your preferences\n{doc_status}"
+                doc_status = f"\n\n📄 **Document loaded:** '{doc['filename']}'"
+            return f"📚 **I can help with:**\n\n🔍 **Search online** - Ask any question\n📄 **Read documents** - Upload PDF/DOCX/TXT\n🌤️ **Weather** - Current conditions\n💰 **Currency** - Live exchange rates\n🧮 **Calculate** - Math problems\n💾 **Memory** - I learn from you!{doc_status}"
         
         # ========== JOKES ==========
-        if any(j in msg for j in ["joke", "funny", "make me laugh"]):
+        if any(j in msg for j in ["joke", "funny"]):
             jokes = [
                 "Why don't scientists trust atoms? Because they make up everything! 😄",
                 "What do you call a fake noodle? An impasta! 🍝",
-                "Why did the scarecrow win an award? He was outstanding in his field! 🌾",
-                "Why do programmers prefer dark mode? Because light attracts bugs! 🐛",
-                "What do you call a Nigerian who knows cyber security? A Nai-ja breaker! 😂"
+                "Why did the scarecrow win an award? He was outstanding in his field! 🌾"
             ]
             return random.choice(jokes)
         
         # ========== MOTIVATION ==========
-        if any(m in msg for m in ["motivate me", "inspire me", "give me motivation", "encourage me"]):
+        if any(m in msg for m in ["motivate me", "inspire me"]):
             return JAIGrammarLong.build_long_motivation()
         
-        # ========== INTENT DETECTION ==========
+        # ========== INTENT & CASUAL ==========
         intent = JAINLP.extract_intent(original_message)
         intent_response = JAIIntent.get_response(intent)
         if intent_response:
             return intent_response
         
-        # ========== CASUAL RESPONSES ==========
         casual = JAICasual.get_casual_response(original_message)
         if casual:
             return casual
@@ -256,24 +256,10 @@ class JAIPersonality:
             "That's interesting. Tell me more!",
             "I hear you. What else is on your mind?",
             "Go on, I'm listening.",
-            "How does that make you feel?",
-            "That's a good point. What do you think?",
-            "I'm here for you. What would you like to talk about?"
+            "Tell me more about that."
         ]
         
-        # If user has a document, remind them
-        if DocumentHandler.has_document(client_id):
-            doc = DocumentHandler.get_user_document(client_id)
-            fallbacks.insert(0, f"I see you have a document '{doc['filename']}' loaded. Want to ask me about it?")
-        
-        # Personalize fallback if we know user's name
         if user_name:
-            personalized_fallbacks = [
-                f"What's on your mind, {user_name}?",
-                f"Tell me more about that, {user_name}.",
-                f"How are you feeling about that, {user_name}?",
-                f"That's interesting, {user_name}. What else?"
-            ]
-            fallbacks.extend(personalized_fallbacks)
+            fallbacks = [f"What's on your mind, {user_name}?", f"Tell me more, {user_name}."]
         
         return random.choice(fallbacks)
