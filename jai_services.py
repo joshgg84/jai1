@@ -1,439 +1,256 @@
-"""JAI - Services Module
-Contains web search, weather, and other external service integrations.
+"""JAI - Core Personality Module
+Main response generation orchestrating all services.
 """
 
+import random
 import re
 import logging
-import requests
 from datetime import datetime
+from jai_nlp import JAINLP
+from jai_casual import JAICasual
+from jai_natural import JAINatural
+from jai_conversation import JAIConversational
+from jai_intent import JAIIntent
+from jai_currency import JAICurrency
+from jai_grammar import JAIGrammar
+from jai_grammar_long import JAIGrammarLong
+from jai_memory import JAIMemory
+from jai_services import WebSearch, Weather, Calculator, TimeService
+from jai_document import DocumentHandler
 
 logger = logging.getLogger(__name__)
 
 
-# ========== WEB SEARCH MODULE ==========
-class WebSearch:
-    """Fast and efficient web search with disambiguation"""
+class JAIPersonality:
+    """Main JAI personality orchestrating all features"""
     
-    # Track ambiguous queries that need clarification
-    _pending_clarifications = {}  # {query_hash: {'options': [...], 'timestamp': ...}}
-    
-    @classmethod
-    def search_online(cls, query):
-        """Quick search using Wikipedia API with disambiguation support"""
-        try:
-            # FIRST: Check if this is a clarification response to a pending question
-            clarification_result = cls._check_clarification_response(query)
-            if clarification_result:
-                return clarification_result
-            
-            # Clean the query - extract the main subject
-            clean_query = cls._extract_subject(query)
-            if not clean_query or len(clean_query) < 3:
-                return None
-            
-            logger.info(f"Original query: {query}")
-            logger.info(f"Extracted subject: {clean_query}")
-            
-            # Check for ambiguous terms
-            ambiguous_result = cls._check_ambiguity(clean_query, query)
-            if ambiguous_result:
-                return ambiguous_result
-            
-            # Try Wikipedia directly
-            result = cls._search_wikipedia(clean_query)
-            if result:
-                return result
-            
-            return None
-                
-        except Exception as e:
-            logger.error(f"Search error: {e}")
-            return None
-    
-    @classmethod
-    def _check_clarification_response(cls, message):
-        """Check if user is responding to a pending clarification"""
-        message_lower = message.lower().strip()
-        
-        # Clean up old pending clarifications (older than 2 minutes)
-        current_time = datetime.now()
-        to_delete = []
-        for key, data in cls._pending_clarifications.items():
-            if (current_time - data['timestamp']).seconds > 120:
-                to_delete.append(key)
-        for key in to_delete:
-            del cls._pending_clarifications[key]
-        
-        # Check each pending clarification
-        for query_hash, pending in list(cls._pending_clarifications.items()):
-            options = pending['options']
-            
-            # Check if user replied with a number (1, 2, etc.)
-            if message_lower.isdigit():
-                num = int(message_lower)
-                if 1 <= num <= len(options):
-                    selected = options[num - 1]
-                    del cls._pending_clarifications[query_hash]
-                    return cls._search_wikipedia(selected['search'])
-            
-            # Check if user replied with text matching any option
-            for option in options:
-                option_name_lower = option['name'].lower()
-                option_search_lower = option['search'].lower()
-                
-                # Direct match
-                if (message_lower == option_name_lower or 
-                    message_lower in option_name_lower or 
-                    option_name_lower in message_lower):
-                    del cls._pending_clarifications[query_hash]
-                    return cls._search_wikipedia(option['search'])
-                
-                # Check for keywords like "programming", "snake", etc.
-                # Extract keywords from parentheses like (programming language)
-                paren_match = re.search(r'\(([^)]+)\)', option['name'])
-                if paren_match:
-                    keyword = paren_match.group(1).lower()
-                    if keyword in message_lower or message_lower in keyword:
-                        del cls._pending_clarifications[query_hash]
-                        return cls._search_wikipedia(option['search'])
-            
-            # Check for common keywords
-            for option in options:
-                keywords = []
-                if 'programming' in option['name'].lower():
-                    keywords = ['programming', 'language', 'code', 'python code']
-                elif 'snake' in option['name'].lower():
-                    keywords = ['snake', 'reptile', 'serpent', 'animal']
-                
-                for keyword in keywords:
-                    if keyword in message_lower:
-                        del cls._pending_clarifications[query_hash]
-                        return cls._search_wikipedia(option['search'])
-        
-        return None
-    
-    @classmethod
-    def _check_ambiguity(cls, term, original_query):
-        """Check if term is ambiguous and ask for clarification"""
-        
-        # Convert to lowercase for matching
-        term_lower = term.lower()
-        
-        # Known ambiguous terms with their possible meanings
-        ambiguous_terms = {
-            'python': [
-                {'name': 'Python (programming language)', 'search': 'Python programming language'},
-                {'name': 'Python (snake)', 'search': 'Python snake'}
-            ],
-            'java': [
-                {'name': 'Java (programming language)', 'search': 'Java programming language'},
-                {'name': 'Java (island)', 'search': 'Java island'},
-                {'name': 'Java (coffee)', 'search': 'Java coffee'}
-            ],
-            'spring': [
-                {'name': 'Spring (season)', 'search': 'Spring season'},
-                {'name': 'Spring (framework)', 'search': 'Spring Framework'}
-            ],
-            'apple': [
-                {'name': 'Apple (company)', 'search': 'Apple Inc'},
-                {'name': 'Apple (fruit)', 'search': 'Apple fruit'}
-            ],
-            'amazon': [
-                {'name': 'Amazon (company)', 'search': 'Amazon.com'},
-                {'name': 'Amazon (rainforest)', 'search': 'Amazon rainforest'}
-            ],
-            'windows': [
-                {'name': 'Windows (operating system)', 'search': 'Microsoft Windows'},
-                {'name': 'Windows (glass)', 'search': 'Window glass'}
-            ],
-            'table': [
-                {'name': 'Table (furniture)', 'search': 'Table furniture'},
-                {'name': 'Table (database)', 'search': 'Database table'}
-            ],
-            'bank': [
-                {'name': 'Bank (financial)', 'search': 'Bank financial institution'},
-                {'name': 'Bank (river)', 'search': 'River bank'}
-            ],
-            'cricket': [
-                {'name': 'Cricket (sport)', 'search': 'Cricket sport'},
-                {'name': 'Cricket (insect)', 'search': 'Cricket insect'}
-            ]
-        }
-        
-        # Check if this term is ambiguous
-        if term_lower in ambiguous_terms:
-            # Create a hash key from the original query
-            query_hash = original_query.lower().strip()
-            
-            # Check if we already have a pending clarification for this query
-            if query_hash in cls._pending_clarifications:
-                # Already asked, waiting for response - don't ask again
-                return None
-            
-            # First time asking - store and return clarification question
-            cls._pending_clarifications[query_hash] = {
-                'options': ambiguous_terms[term_lower],
-                'timestamp': datetime.now()
-            }
-            
-            options_text = "\n".join([f"• {i+1}. {opt['name']}" for i, opt in enumerate(ambiguous_terms[term_lower])])
-            return f"🔍 **Which {term} do you mean?**\n\n{options_text}\n\nReply with the number (e.g., '1') or name."
-        
-        return None
-    
-    @classmethod
-    def _extract_subject(cls, query):
-        """Extract the main subject from a question"""
-        query_lower = query.lower().strip()
-        
-        # Remove question mark
-        query = query.replace('?', '').strip()
-        
-        # List of question patterns to remove
-        question_patterns = [
-            'who created', 'who made', 'who invented', 'who discovered',
-            'who founded', 'who is', 'who was', 'who are',
-            'what is', 'what was', 'what are', 'what does',
-            'where is', 'where was', 'where are',
-            'when is', 'when was', 'when did',
-            'why is', 'why was', 'why did',
-            'how to', 'how do', 'how does',
-            'tell me about', 'explain', 'define',
-            'can you tell me about', 'do you know'
-        ]
-        
-        # Remove the question prefix
-        for pattern in question_patterns:
-            if query_lower.startswith(pattern):
-                query = query[len(pattern):].strip()
-                break
-        
-        # If query is too short after removing pattern, try to get the last word
-        if len(query) < 3:
-            words = query_lower.split()
-            if words:
-                query = words[-1]
-        
-        # Capitalize first letter for Wikipedia
-        if query and not query[0].isdigit():
-            query = query[0].upper() + query[1:]
-        
-        return query
-    
-    @classmethod
-    def _search_wikipedia(cls, term):
-        """Search Wikipedia for a term"""
-        try:
-            # Format the term for URL
-            formatted_term = term.replace(' ', '_')
-            
-            # Try direct page first
-            url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{formatted_term}'
-            logger.info(f"Wikipedia URL: {url}")
-            
-            response = requests.get(url, timeout=8, headers={'User-Agent': 'JAI/1.0'})
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('extract'):
-                    extract = cls._clean_extract(data['extract'])
-                    return f"🔍 {extract}"
-            
-            # Try search API if direct page fails
-            search_url = f'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={term}&format=json'
-            search_response = requests.get(search_url, timeout=8)
-            
-            if search_response.status_code == 200:
-                search_data = search_response.json()
-                if search_data.get('query', {}).get('search'):
-                    # Get the first search result
-                    first_result = search_data['query']['search'][0]['title']
-                    logger.info(f"Search found: {first_result}")
-                    
-                    # Fetch that page
-                    page_url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{first_result.replace(" ", "_")}'
-                    page_response = requests.get(page_url, timeout=8)
-                    
-                    if page_response.status_code == 200:
-                        page_data = page_response.json()
-                        if page_data.get('extract'):
-                            extract = cls._clean_extract(page_data['extract'])
-                            return f"🔍 {extract}"
-            
-            return None
-        except Exception as e:
-            logger.error(f"Wikipedia search error: {e}")
-            return None
-    
-    @classmethod
-    def _clean_extract(cls, extract):
-        """Clean and truncate Wikipedia extract"""
-        # Remove parentheticals
-        extract = re.sub(r'\([^)]*\)', '', extract)
-        # Clean up whitespace
-        extract = ' '.join(extract.split())
-        # Limit length
-        if len(extract) > 800:
-            extract = extract[:800] + "..."
-        return extract
-    
-    @classmethod
-    def should_search(cls, message):
-        """Quick check if message needs web search"""
+    @staticmethod
+    def get_response(message, lesson_content="", lesson_title="", client_id="unknown"):
+        """Main response generator"""
         msg = message.lower().strip()
+        original_message = message
         
-        # Check for question patterns
-        question_patterns = [
-            'who created', 'who made', 'who invented', 'who discovered',
-            'who founded', 'who is', 'who was', 'who are',
-            'what is', 'what was', 'what are', 'what does',
-            'where is', 'where was', 'where are',
-            'when is', 'when was', 'when did',
-            'why is', 'why was', 'why did',
-            'how to', 'how do', 'how does',
-            'tell me about', 'explain', 'define'
-        ]
+        # ========== DOCUMENT UPLOAD COMMAND ==========
+        if msg.startswith('upload_doc:'):
+            try:
+                parts = message.split(':', 2)
+                if len(parts) >= 3:
+                    filename = parts[1].strip()
+                    base64_content = parts[2].strip()
+                    
+                    text = DocumentHandler.extract_text_from_base64(base64_content, filename)
+                    
+                    if text and len(text.strip()) > 10:
+                        preview = text[:200] + "..." if len(text) > 200 else text
+                        simplified = DocumentHandler.simplify_document(text, filename)
+                        DocumentHandler.store_document(client_id, filename, text, simplified)
+                        
+                        return f"✅ **Document uploaded!**\n\n" \
+                               f"📄 **{filename}**\n" \
+                               f"📊 {len(text)} characters\n" \
+                               f"📝 Preview: \"{preview}\"\n\n" \
+                               f"{simplified}\n\n" \
+                               f"💡 **Now ask me anything!** I'll answer from your document or search online."
+                    else:
+                        return "❌ File appears empty or unreadable. Please check the file and try again."
+                else:
+                    return "❌ Invalid upload format. Please use the upload button."
+            except Exception as e:
+                logger.error(f"Document upload error: {e}")
+                return f"❌ Error: {str(e)}"
         
-        for pattern in question_patterns:
-            if pattern in msg:
-                logger.info(f"Search triggered by: {pattern}")
-                return True
-        
-        # Check for question mark
-        if '?' in msg:
-            logger.info("Search triggered by question mark")
-            return True
-        
-        return False
-
-
-# ========== FAST CACHE ==========
-_search_cache = {}
-_cache_duration = 3600  # 1 hour
-
-def get_cached_search(query):
-    """Get cached search result"""
-    key = query.lower().strip()
-    if key in _search_cache:
-        cache_time = _search_cache[key]['time']
-        if (datetime.now() - cache_time).seconds < _cache_duration:
-            return _search_cache[key]['result']
-    return None
-
-def cache_search_result(query, result):
-    """Cache search result"""
-    key = query.lower().strip()
-    _search_cache[key] = {
-        'result': result,
-        'time': datetime.now()
-    }
-
-
-# ========== WEATHER MODULE ==========
-class Weather:
-    """Get weather information quickly"""
-    
-    @classmethod
-    def get_weather(cls, city=None):
-        """Get current weather for a city"""
-        if not city:
-            city = "Lagos"
-        
-        try:
-            url = f"https://wttr.in/{city}?format=%C:+%t,+%w,+%h&m"
-            response = requests.get(url, timeout=5)
-            
-            if response.status_code == 200:
-                weather_data = response.text.strip()
-                if weather_data and not weather_data.startswith('Unknown'):
-                    return f"🌤️ {city.title()}: {weather_data}"
-        except Exception as e:
-            logger.warning(f"Weather failed: {e}")
-        
-        return None
-    
-    @classmethod
-    def detect_weather_query(cls, message):
-        """Quick weather detection"""
-        msg_lower = message.lower()
-        
-        if 'weather' in msg_lower or 'temperature' in msg_lower:
-            city = None
-            if 'in' in msg_lower:
-                parts = msg_lower.split('in')
-                if len(parts) > 1:
-                    city = parts[1].strip().split()[0]
-                    city = re.sub(r'[^\w\s]', '', city)
-            return cls.get_weather(city)
-        return None
-
-
-# ========== CALCULATION MODULE ==========
-class Calculator:
-    """Fast math calculations"""
-    
-    @staticmethod
-    def calculate(expr):
-        try:
-            expr = expr.replace('plus', '+').replace('minus', '-')
-            expr = expr.replace('times', '*').replace('divided by', '/')
-            expr = re.sub(r"[^0-9+\-*/%.() ]", "", expr)
-            result = eval(expr)
-            return f"🧮 {expr} = {result}"
-        except:
-            return None
-    
-    @staticmethod
-    def should_calculate(message):
-        msg_lower = message.lower()
-        return any(op in msg_lower for op in ["+", "-", "*", "/", "%", "calculate"])
-
-
-# ========== TIME MODULE ==========
-class TimeService:
-    """Fast time and date"""
-    
-    @staticmethod
-    def get_time():
-        now = datetime.now()
-        return f"🕐 {now.strftime('%I:%M %p')}"
-    
-    @staticmethod
-    def get_date():
-        now = datetime.now()
-        return f"📅 {now.strftime('%A, %B %d, %Y')}"
-    
-    @staticmethod
-    def should_respond(message):
-        msg_lower = message.lower()
-        return "time" in msg_lower or "date" in msg_lower
-
-
-# ========== GENERAL KNOWLEDGE DETECTION ==========
-class GeneralKnowledge:
-    """Detect if question needs web search"""
-    
-    @staticmethod
-    def is_general_question(question):
-        """Quick check if this is a general knowledge question"""
-        q_lower = question.lower()
-        
-        patterns = [
-            r'who created', r'who made', r'who invented', r'who discovered',
-            r'who founded', r'who is', r'who was', r'who are',
+        # ========== CHECK FOR GENERAL KNOWLEDGE QUESTIONS (ALWAYS SEARCH FIRST) ==========
+        # These patterns should ALWAYS trigger web search
+        general_knowledge_patterns = [
+            r'who created', r'who founded', r'who invented', r'who discovered',
+            r'who is', r'who was', r'who are',
             r'what is', r'what was', r'what are', r'what does',
             r'where is', r'where was', r'where are',
             r'when is', r'when was', r'when did',
             r'why is', r'why was', r'why did',
             r'how to', r'how do', r'how does',
-            r'tell me about', r'explain', r'define'
+            r'tell me about', r'explain', r'define', r'meaning of',
+            r'what does .+ mean', r'what is .+ called'
         ]
         
-        for pattern in patterns:
-            if re.search(pattern, q_lower):
-                return True
+        is_general_knowledge = False
+        for pattern in general_knowledge_patterns:
+            if re.search(pattern, msg):
+                is_general_knowledge = True
+                logger.info(f"General knowledge detected: {pattern}")
+                break
         
-        if question.strip().endswith('?'):
-            return True
+        # Also check if message ends with question mark
+        if original_message.strip().endswith('?'):
+            is_general_knowledge = True
+            logger.info("General knowledge detected: question mark")
         
-        return False
+        # GENERAL KNOWLEDGE - SEARCH ONLINE FIRST
+        if is_general_knowledge:
+            logger.info(f"Searching online for: {original_message}")
+            search_result = WebSearch.search_online(original_message)
+            if search_result:
+                JAIMemory.save_conversation(client_id, original_message, search_result)
+                return search_result
+        
+        # ========== WEATHER ==========
+        weather_response = Weather.detect_weather_query(original_message)
+        if weather_response:
+            JAIMemory.save_conversation(client_id, original_message, weather_response)
+            return weather_response
+        
+        # ========== DOCUMENT INTELLIGENCE (if document loaded) ==========
+        if DocumentHandler.has_document(client_id):
+            doc = DocumentHandler.get_user_document(client_id)
+            if doc:
+                # Answer from document
+                doc_answer = DocumentHandler.answer_question(client_id, original_message)
+                if doc_answer and not doc_answer.startswith("🔍"):
+                    JAIMemory.save_conversation(client_id, original_message, doc_answer)
+                    return doc_answer
+        
+        # ========== CALCULATIONS ==========
+        percent_match = re.search(r'(\d+)\s*percent\s*of\s*(\d+)', msg)
+        if percent_match:
+            calc_result = Calculator.calculate(original_message)
+            if calc_result:
+                return calc_result
+        
+        has_numbers = len(re.findall(r'\d+', original_message)) >= 2
+        has_math_op = any(op in msg for op in ['+', '-', '*', '/', '%'])
+        if has_numbers and has_math_op:
+            calc_result = Calculator.calculate(original_message)
+            if calc_result:
+                return calc_result
+        
+        # ========== CURRENCY CONVERSION ==========
+        currency_result = JAICurrency.detect_and_convert(original_message)
+        if currency_result:
+            return currency_result
+        
+        # ========== TIME & DATE ==========
+        if "time" in msg:
+            return TimeService.get_time()
+        if "date" in msg:
+            return TimeService.get_date()
+        
+        # ========== MEMORY ==========
+        next_time_response = JAIMemory.get_next_time_say_response(client_id, original_message)
+        if next_time_response:
+            return next_time_response
+        
+        taught_response = JAIMemory.get_taught_response(client_id, original_message)
+        if taught_response:
+            return taught_response
+        
+        # Extract user facts
+        learned_facts = JAIMemory.extract_and_save_user_fact(client_id, original_message)
+        if learned_facts:
+            for fact_key, fact_value in learned_facts:
+                if fact_key == "name":
+                    return f"Nice to meet you, {fact_value}! 😊"
+                elif fact_key == "age":
+                    return f"Got it! You're {fact_value} years old!"
+                elif fact_key == "location":
+                    return f"Cool! {fact_value} is a great place!"
+        
+        user_facts = JAIMemory.get_user_facts(client_id)
+        user_name = user_facts.get("name", None)
+        
+        # ========== LEARNING PATTERNS ==========
+        next_time_pattern = re.search(r'next time .+? say[s]? ["\']?(.+?)["\']?\s+(?:say|respond with) ["\']?(.+?)["\']?', msg, re.IGNORECASE)
+        if next_time_pattern:
+            trigger = next_time_pattern.group(1).strip()
+            response = next_time_pattern.group(2).strip()
+            JAIMemory.learn_next_time_say(client_id, trigger, response)
+            return f"📚 Got it! When someone says '{trigger}', I'll respond with '{response}'"
+        
+        teach_pattern = re.search(r'teach ["\']?(.+?)["\']?\s*->\s*["\']?(.+?)["\']?', msg, re.IGNORECASE)
+        if teach_pattern:
+            trigger = teach_pattern.group(1).strip()
+            response = teach_pattern.group(2).strip()
+            JAIMemory.teach_response(client_id, trigger, response)
+            return f"✅ Learned! '{trigger}' -> '{response}'"
+        
+        # ========== GREETINGS ==========
+        if any(g in msg for g in ["good morning", "morning"]):
+            return f"Good morning{', ' + user_name if user_name else ''}! 🌅"
+        if any(g in msg for g in ["good afternoon", "afternoon"]):
+            return f"Good afternoon{', ' + user_name if user_name else ''}! 🌞"
+        if any(g in msg for g in ["good evening", "evening"]):
+            return f"Good evening{', ' + user_name if user_name else ''}! 🌙"
+        if any(g in msg for g in ["good night", "night"]):
+            return "Good night! 🌙"
+        
+        if any(g in msg for g in ["hi", "hello", "hey", "howdy"]):
+            if user_name:
+                return f"Hello {user_name}! 😊 How can I help?"
+            return "Hello! 😊 Ask me anything! I can search online, read documents, check weather, or convert currency."
+        
+        # ========== HOW ARE YOU ==========
+        if any(h in msg for h in ["how are you", "how you doing"]):
+            return "I'm doing great! Thanks for asking!"
+        
+        # ========== THANKS ==========
+        if any(t in msg for t in ["thank", "thanks"]):
+            return "You're welcome! 😊"
+        
+        # ========== GOODBYE ==========
+        if any(g in msg for g in ["bye", "goodbye", "see you"]):
+            return "Goodbye! Take care! 👋"
+        
+        # ========== CREATOR ==========
+        if any(c in msg for c in ["who made you", "who created you"]):
+            return "I was created by Joshua Giwa from Yukuben Village, Nigeria! 🇳🇬"
+        
+        # ========== CAPABILITIES ==========
+        if any(c in msg for c in ["what can you do", "your skills", "help"]):
+            doc_status = ""
+            if DocumentHandler.has_document(client_id):
+                doc = DocumentHandler.get_user_document(client_id)
+                doc_status = f"\n\n📄 **Document loaded:** '{doc['filename']}'"
+            return f"📚 **I can help with:**\n\n🔍 **Search online** - Ask any question\n📄 **Read documents** - Upload PDF/DOCX/TXT\n🌤️ **Weather** - Current conditions\n💰 **Currency** - Live exchange rates\n🧮 **Calculate** - Math problems\n💾 **Memory** - I learn from you!{doc_status}"
+        
+        # ========== JOKES ==========
+        if any(j in msg for j in ["joke", "funny"]):
+            jokes = [
+                "Why don't scientists trust atoms? Because they make up everything! 😄",
+                "What do you call a fake noodle? An impasta! 🍝",
+                "Why did the scarecrow win an award? He was outstanding in his field! 🌾"
+            ]
+            return random.choice(jokes)
+        
+        # ========== MOTIVATION ==========
+        if any(m in msg for m in ["motivate me", "inspire me"]):
+            return JAIGrammarLong.build_long_motivation()
+        
+        # ========== INTENT & CASUAL ==========
+        intent = JAINLP.extract_intent(original_message)
+        intent_response = JAIIntent.get_response(intent)
+        if intent_response:
+            return intent_response
+        
+        casual = JAICasual.get_casual_response(original_message)
+        if casual:
+            return casual
+        
+        natural = JAINatural.get_natural_response(original_message)
+        if natural:
+            return natural
+        
+        conv = JAIConversational.get_response(original_message)
+        if conv:
+            return conv
+        
+        # ========== DEFAULT FALLBACK ==========
+        fallbacks = [
+            "That's interesting. Tell me more!",
+            "I hear you. What else is on your mind?",
+            "Go on, I'm listening.",
+            "Tell me more about that."
+        ]
+        
+        if user_name:
+            fallbacks = [f"What's on your mind, {user_name}?", f"Tell me more, {user_name}."]
+        
+        return random.choice(fallbacks)
