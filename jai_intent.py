@@ -75,7 +75,7 @@ class JAIIntent:
         
         # ========== CLARIFICATION ==========
         'ask_clarification': [
-            r'\b(wat|what|huh|eh)\b',
+            r'\b(wat|huh|eh)\b',
             r'what did you (say|mean)',
             r'i did not (hear|get|understand)',
             r'come again',
