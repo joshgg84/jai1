@@ -34,29 +34,24 @@ class JAIPersonality:
             JAIMemory.save_conversation(client_id, message, weather_response)
             return weather_response
         
-        # ========== STEP 2: WEB SEARCH (FOR QUESTIONS) ==========
-        # Special check: "what is" without numbers should go to search
-        if 'what is' in msg and not re.search(r'\d+', msg):
-            logger.info(f"Question detected (what is without numbers): {message}")
-            search_result = WebSearch.search_online(message)
-            if search_result:
-                response = f"🔍 {search_result}"
-                JAIMemory.save_conversation(client_id, message, response)
-                return response
+        # ========== STEP 2: WEB SEARCH FOR ANY QUESTION ==========
+        # Check if message contains a question
+        has_question_mark = '?' in message
+        has_question_word = any(msg.startswith(word) for word in ['who', 'what', 'where', 'when', 'why', 'how'])
         
-        # Check if message is a question or contains question words
-        is_question = message.strip().endswith('?')
-        has_question_word = any(word in msg.split()[:3] for word in ['who', 'what', 'where', 'when', 'why', 'how'])
-        
-        if is_question or has_question_word:
-            logger.info(f"Question detected: {message}")
+        # Trigger search for ANY question
+        if has_question_mark or has_question_word:
+            logger.info(f"🔍 Searching: {message}")
             search_result = WebSearch.search_online(message)
             
             if search_result:
-                logger.info(f"Search successful, returning result")
+                logger.info(f"✅ Search found result")
                 response = f"🔍 {search_result}"
                 JAIMemory.save_conversation(client_id, message, response)
                 return response
+            else:
+                logger.info(f"❌ No search result found")
+                # Don't return error, continue to other responses
         
         # ========== STEP 3: CHECK MEMORY ==========
         
@@ -112,7 +107,35 @@ class JAIPersonality:
             else:
                 return f"❌ Sorry, I couldn't learn that. Error: {message_result}"
         
-        # ========== STEP 5: TIME GREETINGS ==========
+        # ========== STEP 5: CALCULATIONS (BEFORE GREETINGS) ==========
+        # Check for percent calculations
+        percent_match = re.search(r'(\d+)\s*percent\s*of\s*(\d+)', msg)
+        if percent_match:
+            calc_result = Calculator.calculate(message)
+            if calc_result:
+                return calc_result
+        
+        # Check for math with numbers
+        has_numbers = len(re.findall(r'\d+', message)) >= 2
+        has_math_op = any(op in msg for op in ['+', '-', '*', '/', '%'])
+        if has_numbers and has_math_op:
+            calc_result = Calculator.calculate(message)
+            if calc_result:
+                return calc_result
+        
+        # ========== STEP 6: CURRENCY CONVERSION ==========
+        currency_result = JAICurrency.detect_and_convert(message)
+        if currency_result:
+            return currency_result
+        
+        # ========== STEP 7: TIME & DATE ==========
+        if "time" in msg:
+            return TimeService.get_time()
+        
+        if "date" in msg:
+            return TimeService.get_date()
+        
+        # ========== STEP 8: TIME GREETINGS ==========
         if any(g in msg for g in ["good morning", "morning"]):
             greeting = "Good morning! 🌅 Hope you slept well. What is on your agenda today?"
             if user_name:
@@ -134,7 +157,7 @@ class JAIPersonality:
         if any(g in msg for g in ["good night", "night"]):
             return "Good night! 🌙 Rest well. Tomorrow is another chance."
         
-        # ========== STEP 6: BASIC GREETINGS ==========
+        # ========== STEP 9: BASIC GREETINGS ==========
         if any(g in msg for g in ["hi", "hello", "hey", "howdy", "sup"]):
             if user_name:
                 return random.choice([
@@ -148,7 +171,7 @@ class JAIPersonality:
                 "Hi! Ready to chat?"
             ])
         
-        # ========== STEP 7: HOW ARE YOU? ==========
+        # ========== STEP 10: HOW ARE YOU? ==========
         if any(h in msg for h in ["how are you", "how you doing", "how is it going", "how are you doing"]):
             responses = [
                 "I am doing great! Thanks for asking. How about you?",
@@ -163,23 +186,7 @@ class JAIPersonality:
                 ]
             return random.choice(responses)
         
-        # ========== STEP 8: FOLLOW-UP RESPONSES ==========
-        if any(f in msg for f in ["i am fine", "i am good", "doing good", "doing well", "i am alright"]):
-            if any(q in msg for q in ["what about you", "how about you", "and you", "u?", "you?"]):
-                return random.choice([
-                    "I am doing great, thanks for asking! 😊 What has been the highlight of your day so far?",
-                    "I am good! Just been here, ready to chat. What is new with you?",
-                    "I am doing well! Thanks for checking. What is on your mind today?",
-                    "I am alright — better now that you asked. So what is happening in your world?"
-                ])
-            else:
-                return random.choice([
-                    "Glad to hear that! 😊 What has been going well?",
-                    "That is good! Anything exciting happening today?",
-                    "Happy to hear that. What are you up to?"
-                ])
-        
-        # ========== STEP 9: THANKS ==========
+        # ========== STEP 11: THANKS ==========
         if any(t in msg for t in ["thank", "thanks", "thx"]):
             return random.choice([
                 "You're welcome! 😊 Happy to help.",
@@ -187,7 +194,7 @@ class JAIPersonality:
                 "My pleasure!"
             ])
         
-        # ========== STEP 10: GOODBYE ==========
+        # ========== STEP 12: GOODBYE ==========
         if any(g in msg for g in ["bye", "goodbye", "see you", "later"]):
             return random.choice([
                 "Goodbye! Take care! 👋",
@@ -195,45 +202,15 @@ class JAIPersonality:
                 "Peace! Have a great day!"
             ])
         
-        # ========== STEP 11: CREATOR ==========
+        # ========== STEP 13: CREATOR ==========
         if any(c in msg for c in ["who made you", "who created you", "your creator"]):
             return "I was created by Joshua Giwa from Yukuben Village, Nigeria! 🇳🇬 He built me to be a helpful companion that learns from every conversation."
         
-        # ========== STEP 12: CAPABILITIES ==========
+        # ========== STEP 14: CAPABILITIES ==========
         if any(c in msg for c in ["what can you do", "your skills", "help with"]):
             return "I can chat with you, do calculations 💰, convert currencies with live rates, check weather 🌤️, search online 🔍, and most importantly - I LEARN! \n\nYou can:\n• Teach me: 'teach hello -> Hi there!'\n• Next time say: 'next time someone says hello say Hey!'\n• Share your name, age, or location"
         
-        # ========== STEP 13: CURRENCY CONVERSION ==========
-        currency_result = JAICurrency.detect_and_convert(message)
-        if currency_result:
-            return currency_result
-        
-        # ========== STEP 14: CALCULATIONS (ONLY IF NUMBERS ARE PRESENT) ==========
-        # Check if message contains math operators AND has numbers
-        has_math_ops = any(op in msg for op in ["+", "-", "*", "/", "%"])
-        has_numbers = len(re.findall(r'\d+', message)) >= 2
-        
-        # Only trigger calculation if there are actual numbers to calculate
-        if has_math_ops and has_numbers:
-            calc_result = Calculator.calculate(message)
-            if calc_result:
-                return calc_result
-        
-        # Handle "what is X percent of Y" pattern separately
-        percent_match = re.search(r'(\d+)\s*percent\s*of\s*(\d+)', msg)
-        if percent_match:
-            calc_result = Calculator.calculate(message)
-            if calc_result:
-                return calc_result
-        
-        # ========== STEP 15: TIME & DATE ==========
-        if "time" in msg:
-            return TimeService.get_time()
-        
-        if "date" in msg:
-            return TimeService.get_date()
-        
-        # ========== STEP 16: JOKES ==========
+        # ========== STEP 15: JOKES ==========
         if any(j in msg for j in ["joke", "funny", "make me laugh"]):
             jokes = [
                 "Why don't scientists trust atoms? Because they make up everything! 😄",
@@ -244,28 +221,17 @@ class JAIPersonality:
             ]
             return random.choice(jokes)
         
-        # ========== STEP 17: MOTIVATION ==========
+        # ========== STEP 16: MOTIVATION ==========
         if any(m in msg for m in ["motivate me", "inspire me", "give me motivation"]):
             return JAIGrammarLong.build_long_motivation()
         
-        # ========== STEP 18: USE JAIINTENT ==========
+        # ========== STEP 17: USE JAIINTENT ==========
         intent = JAINLP.extract_intent(message)
         intent_response = JAIIntent.get_response(intent)
         if intent_response:
             return intent_response
         
-        # ========== STEP 19: SENTIMENT ANALYSIS ==========
-        analysis = JAINLP.analyze_sentence(message)
-        if analysis and analysis['sentiment']['emotion'] in ['positive', 'negative']:
-            polarity = analysis['sentiment']['polarity']
-            
-            if polarity > 0.6:
-                return "Wow! That energy is contagious! 🎉 Tell me everything — I want to celebrate with you!"
-            
-            if polarity < -0.6:
-                return "That sounds really heavy. I am here with you. Want to talk it through? No pressure."
-        
-        # ========== STEP 20: CASUAL RESPONSES ==========
+        # ========== STEP 18: CASUAL RESPONSES ==========
         casual = JAICasual.get_casual_response(message)
         if casual:
             return casual
@@ -278,23 +244,20 @@ class JAIPersonality:
         if conv:
             return conv
         
-        # ========== STEP 21: DEFAULT FALLBACK ==========
+        # ========== STEP 19: DEFAULT FALLBACK ==========
         fallbacks = [
             "That's interesting. Tell me more!",
             "I hear you. What else is on your mind?",
             "Go on, I'm listening.",
             "How does that make you feel?",
-            "That's a good point. What do you think?",
-            "I'm here for you. What would you like to talk about?"
+            "That's a good point. What do you think?"
         ]
         
-        # Personalize fallback if we know user's name
         if user_name:
-            personalized_fallbacks = [
+            fallbacks = [
                 f"What's on your mind, {user_name}?",
                 f"Tell me more about that, {user_name}.",
                 f"How are you feeling about that, {user_name}?"
             ]
-            fallbacks.extend(personalized_fallbacks)
         
         return random.choice(fallbacks)
