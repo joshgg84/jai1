@@ -27,7 +27,6 @@ class JAIPersonality:
     def get_response(message, lesson_content="", lesson_title="", client_id="unknown"):
         """Main response generator with memory, web search, and weather"""
         msg = message.lower().strip()
-        now = datetime.now()
         
         # ========== WEATHER CHECK ==========
         weather_response = Weather.detect_weather_query(message)
@@ -106,9 +105,6 @@ class JAIPersonality:
         
         # ========== NORMAL RESPONSE GENERATION ==========
         
-        # Normalize Nigerian slang
-        normalized = JAINLP.normalize_nigerian_slang(message)
-        
         # Analyze sentence with NLP
         analysis = JAINLP.analyze_sentence(message)
         
@@ -136,6 +132,20 @@ class JAIPersonality:
         
         if any(g in msg for g in ["good night", "night"]):
             return "Good night! 🌙 Rest well. Tomorrow is another chance."
+        
+        # ========== BASIC GREETINGS ==========
+        if any(g in msg for g in ["hi", "hello", "hey", "howdy", "sup"]):
+            if user_name:
+                return random.choice([
+                    f"Hello {user_name}! 😊 How can I help you today?",
+                    f"Hey {user_name}! What's good?",
+                    f"Hi {user_name}! Ready to chat?"
+                ])
+            return random.choice([
+                "Hello! 😊 How can I help you today?",
+                "Hey there! What's good?",
+                "Hi! Ready to chat?"
+            ])
         
         # ========== HOW ARE YOU? EXCHANGE ==========
         if any(h in msg for h in ["how are you", "how you doing", "how is it going", "how are you doing"]):
@@ -278,24 +288,6 @@ class JAIPersonality:
         conv = JAIConversational.get_response(message)
         if conv:
             return conv
-        
-        # ========== SMART FOLLOW-UP ==========
-        if intent == 'general_chat' and analysis and analysis['words']:
-            keywords = JAINLP.extract_keywords(message, top_n=1)
-            if keywords:
-                follow_ups = [
-                    f"What about {keywords[0]} interests you?",
-                    f"Tell me more about {keywords[0]}.",
-                    f"How does {keywords[0]} fit into your day?",
-                    f"What is your experience with {keywords[0]}?"
-                ]
-                return random.choice(follow_ups)
-        
-        # ========== DYNAMIC RESPONSE GENERATION ==========
-        keywords = JAINLP.extract_keywords(message)
-        if keywords:
-            keyword_context = f" about {keywords[0]}" if keywords else ""
-            return f"{random.choice(['That is interesting', 'Tell me more', 'I hear you', 'That is real'])}{keyword_context}. {random.choice(['What else is on your mind', 'How are you feeling about that', 'What do you think', 'Tell me more'])}?"
         
         # ========== DEFAULT ==========
         fallbacks = [
