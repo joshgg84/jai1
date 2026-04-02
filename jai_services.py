@@ -9,100 +9,79 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+
 # ========== WEB SEARCH MODULE ==========
 class WebSearch:
-    """Search online for factual questions - no API key needed"""
-    
-    _search_cache = {}
+    """Search online for factual questions"""
     
     @classmethod
     def search_online(cls, query):
-        """Search online using free APIs"""
-        cache_key = query.lower().strip()
-        
-        # Check cache (5 minute cache)
-        if cache_key in cls._search_cache:
-            cache_time = cls._search_cache[cache_key]['time']
-            if (datetime.now() - cache_time).seconds < 300:
-                return cls._search_cache[cache_key]['result']
-        
+        """Search online using DuckDuckGo API"""
         try:
-            # Try DuckDuckGo API first
             encoded_query = requests.utils.quote(query)
             url = f'https://api.duckduckgo.com/?q={encoded_query}&format=json&no_html=1&skip_disambig=1'
-            response = requests.get(url, timeout=8, headers={'User-Agent': 'JAI-Bot/1.0'})
+            response = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
             
             if response.status_code == 200:
                 data = response.json()
                 
-                # Get the abstract or definition
-                result = None
+                # Try to get AbstractText first
                 if data.get('AbstractText'):
-                    result = data['AbstractText']
-                elif data.get('Definition'):
-                    result = data['Definition']
-                elif data.get('Answer'):
-                    result = data['Answer']
+                    return data['AbstractText']
                 
-                if result and len(result) > 10:
-                    # Cache result
-                    cls._search_cache[cache_key] = {
-                        'result': result,
-                        'time': datetime.now()
-                    }
-                    return result
-            
-            # Try Wikipedia as fallback
-            wiki_url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{encoded_query}'
-            wiki_response = requests.get(wiki_url, timeout=8)
-            
-            if wiki_response.status_code == 200:
-                wiki_data = wiki_response.json()
-                if wiki_data.get('extract'):
-                    result = wiki_data['extract']
-                    cls._search_cache[cache_key] = {
-                        'result': result,
-                        'time': datetime.now()
-                    }
-                    return result
-                    
+                # Try Definition
+                if data.get('Definition'):
+                    return data['Definition']
+                
+                # Try Answer
+                if data.get('Answer'):
+                    return data['Answer']
+                
+                # Try RelatedTopics
+                if data.get('RelatedTopics'):
+                    for topic in data['RelatedTopics']:
+                        if isinstance(topic, dict) and topic.get('Text'):
+                            text = topic['Text']
+                            if len(text) > 50:
+                                return text
+                
+                return None
+                
         except Exception as e:
-            logger.warning(f"Search failed: {e}")
-        
-        return None
+            logger.error(f"Search error: {e}")
+            return None
     
     @classmethod
     def should_search(cls, message):
         """Determine if message should trigger web search"""
-        msg_lower = message.lower()
+        msg_lower = message.lower().strip()
         
-        # ALWAYS search for questions with "who", "what", "where", "when", "why", "how"
-        question_words = ['who is', 'what is', 'where is', 'when is', 'why is', 'how to',
-                         'who was', 'what was', 'what are', 'who are', 'tell me about',
-                         'explain', 'define', 'meaning of', 'information about']
+        # Question words that should ALWAYS trigger search
+        question_triggers = [
+            'who is', 'who was', 'who are',
+            'what is', 'what was', 'what are', 'what does', 'what do',
+            'where is', 'where was', 'where are',
+            'when is', 'when was', 'when did',
+            'why is', 'why was', 'why did', 'why do',
+            'how to', 'how do', 'how does', 'how is',
+            'tell me about', 'explain', 'define', 'meaning of',
+            'capital of', 'population of', 'president of'
+        ]
         
-        for word in question_words:
-            if word in msg_lower:
+        for trigger in question_triggers:
+            if msg_lower.startswith(trigger) or trigger in msg_lower:
                 return True
         
-        # Also search if message ends with question mark and has more than 3 words
-        if message.strip().endswith('?') and len(message.split()) > 3:
+        # If message ends with question mark and has content
+        if message.strip().endswith('?'):
             return True
-        
-        # Search for specific factual queries
-        factual_patterns = ['capital of', 'population of', 'president of', 'ceo of',
-                           'founder of', 'inventor of', 'history of', 'facts about']
-        
-        for pattern in factual_patterns:
-            if pattern in msg_lower:
-                return True
         
         return False
 
 
 # ========== WEATHER MODULE ==========
 class Weather:
-    """Get weather information for any city"""
+    """Get weather information"""
     
     @classmethod
     def get_weather(cls, city=None):
@@ -111,50 +90,30 @@ class Weather:
             city = "Lagos"
         
         try:
-            # Using wttr.in - free weather service
             url = f"https://wttr.in/{city}?format=%C:+%t,+%w,+%h&m"
-            response = requests.get(url, timeout=8)
+            response = requests.get(url, timeout=10)
             
             if response.status_code == 200:
                 weather_data = response.text.strip()
                 if weather_data and not weather_data.startswith('Unknown'):
-                    return f"🌤️ **Weather in {city.title()}**\n{weather_data}"
+                    return f"🌤️ Weather in {city.title()}: {weather_data}"
         except Exception as e:
-            logger.warning(f"Weather lookup failed: {e}")
+            logger.warning(f"Weather failed: {e}")
         
         return None
     
     @classmethod
     def detect_weather_query(cls, message):
-        """Detect if user is asking about weather"""
+        """Detect weather question"""
         msg_lower = message.lower()
         
-        weather_keywords = ['weather', 'temperature', 'forecast', 'raining', 'sunny', 'cloudy', 'hot', 'cold']
-        
-        if any(keyword in msg_lower for keyword in weather_keywords):
-            # Extract city name
+        if any(word in msg_lower for word in ['weather', 'temperature', 'forecast']):
             city = None
-            
-            # Pattern: "weather in Lagos"
             if 'in' in msg_lower:
                 parts = msg_lower.split('in')
                 if len(parts) > 1:
                     city = parts[1].strip().split()[0]
-                    city = re.sub(r'[^\w\s]', '', city)
-            
-            # Pattern: "Lagos weather"
-            if not city:
-                words = message.split()
-                for i, word in enumerate(words):
-                    if word.lower() in weather_keywords and i > 0:
-                        city = words[i-1]
-                        break
-                    elif word.lower() in weather_keywords and i < len(words)-1:
-                        city = words[i+1]
-                        break
-            
             return cls.get_weather(city)
-        
         return None
 
 
@@ -165,21 +124,24 @@ class Calculator:
     @staticmethod
     def calculate(expr):
         try:
+            # Clean the expression
+            expr = expr.replace('plus', '+').replace('minus', '-')
+            expr = expr.replace('times', '*').replace('divided by', '/')
             expr = re.sub(r"[^0-9+\-*/%.() ]", "", expr)
-            return f"🧮 {expr} = {eval(expr)}"
+            result = eval(expr)
+            return f"🧮 {expr} = {result}"
         except:
             return None
     
     @staticmethod
     def should_calculate(message):
-        """Check if message contains calculation request"""
         msg_lower = message.lower()
-        return any(op in msg_lower for op in ["+", "-", "*", "/", "%", "calculate", "what is"])
+        return any(op in msg_lower for op in ["+", "-", "*", "/", "%", "calculate"])
 
 
 # ========== TIME MODULE ==========
 class TimeService:
-    """Handle time and date queries"""
+    """Handle time and date"""
     
     @staticmethod
     def get_time():
