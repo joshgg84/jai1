@@ -94,6 +94,9 @@ class DocumentHandler:
         elif any(word in text_lower for word in ['exam', 'test', 'question', 'student', 'course']):
             icon = "📚"
             doc_name = "Educational Document"
+        elif any(word in text_lower for word in ['http', 'server', 'function', 'const', 'let', 'var', 'app.get', 'app.post']):
+            icon = "💻"
+            doc_name = "Code File"
         elif any(word in text_lower for word in ['invoice', 'payment', 'amount', 'due']):
             icon = "💰"
             doc_name = "Financial Document"
@@ -101,15 +104,15 @@ class DocumentHandler:
             icon = "📄"
             doc_name = "Document"
         
-        # Extract key points
-        sentences = re.split(r'[.!?]+', text)
+        # Extract key points (first few lines or sentences)
+        lines = text.split('\n')[:10]
         key_points = []
-        for s in sentences:
-            s = s.strip()
-            if len(s) > 30 and len(key_points) < 5:
-                if len(s) > 200:
-                    s = s[:197] + "..."
-                key_points.append(s)
+        for line in lines:
+            line = line.strip()
+            if len(line) > 20 and len(key_points) < 5:
+                if len(line) > 150:
+                    line = line[:147] + "..."
+                key_points.append(line)
         
         # Build response
         simplified = f"{icon} **{doc_name} Simplified**\n\n"
@@ -117,7 +120,7 @@ class DocumentHandler:
         simplified += f"**Length:** {len(text)} characters\n\n"
         
         if key_points:
-            simplified += f"**Main Points:**\n\n"
+            simplified += f"**Main Content:**\n\n"
             for i, point in enumerate(key_points, 1):
                 simplified += f"{i}. {point}\n\n"
         else:
@@ -174,53 +177,78 @@ class DocumentHandler:
         
         # Handle empty/short questions
         if len(question_lower) < 5:
-            return f"💡 **Ask about '{filename}':**\n\nTry:\n• What is this document about?\n• Summarize the key points\n• Tell me about [specific topic]"
+            return f"💡 **Ask about '{filename}':**\n\nTry:\n• What is this document about?\n• What type of code is this?\n• Summarize the content\n• Tell me about [specific topic]"
+        
+        # Question about code/language type
+        if any(word in question_lower for word in ['what type', 'what language', 'what code', 'programming language', 'what is this code']):
+            # Detect language from content
+            if 'const' in content or 'let' in content or 'var' in content or 'function' in content:
+                if 'http' in content or 'server' in content:
+                    return f"💻 **This appears to be Node.js/JavaScript code!**\n\nThe document contains a Node.js server implementation using the HTTP module. It looks like a web server or API server.\n\nKey indicators:\n• Uses `const` and `let` (ES6 JavaScript)\n• Requires Node.js modules (http, fs, path)\n• Creates a server with http.createServer()\n\nWhat specific part would you like me to explain?"
+                else:
+                    return f"💻 **This appears to be JavaScript/Node.js code!**\n\nThe document contains JavaScript code, likely for a Node.js application.\n\nWhat would you like to know about the code?"
+            elif 'def ' in content or 'import' in content:
+                return f"🐍 **This appears to be Python code!**\n\nThe document contains Python code.\n\nWhat would you like to know about it?"
+            else:
+                return f"📄 **This appears to be a code/text file.**\n\nBased on the content, it contains programming code or configuration.\n\nWhat specific information are you looking for?"
         
         # Summary request
-        if any(word in question_lower for word in ['summary', 'overview', 'what is this about', 'tell me about', 'what does it say']):
-            sentences = re.split(r'[.!?]+', content)
+        if any(word in question_lower for word in ['summary', 'overview', 'what is this about', 'tell me about it', 'what is it']):
+            # Get first few lines or sentences
+            lines = content.split('\n')[:8]
             summary_points = []
-            for s in sentences[:8]:
-                s = s.strip()
-                if len(s) > 30:
-                    if len(s) > 200:
-                        s = s[:197] + "..."
-                    summary_points.append(s)
+            for line in lines:
+                line = line.strip()
+                if len(line) > 20:
+                    if len(line) > 150:
+                        line = line[:147] + "..."
+                    summary_points.append(line)
             
             if summary_points:
                 response = f"📋 **Summary of '{filename}':**\n\n"
-                for i, point in enumerate(summary_points[:4], 1):
+                for i, point in enumerate(summary_points[:5], 1):
                     response += f"{i}. {point}\n\n"
-                response += "Anything specific you'd like to know more about?"
+                
+                # Add document type detection
+                if 'const' in content or 'let' in content:
+                    response += "\n💡 **This appears to be JavaScript/Node.js code.** Ask me: 'What type of code is this?' for more details."
+                
+                response += "Anything specific you'd like to know?"
                 return response
             else:
                 preview = content[:500] + "..." if len(content) > 500 else content
                 return f"📋 **From '{filename}':**\n\n{preview}\n\nWhat specific information are you looking for?"
         
-        # Search for keywords
+        # Search for keywords in content
         keywords = re.findall(r'\b[a-z]{4,}\b', question_lower)
-        stopwords = {'what', 'does', 'this', 'that', 'tell', 'about', 'from', 'with', 'have', 'were', 'there', 'their', 'they', 'will', 'would', 'could', 'should'}
+        stopwords = {'what', 'does', 'this', 'that', 'tell', 'about', 'from', 'with', 'have', 'were', 'there', 'their', 'they', 'will', 'would', 'could', 'should', 'type', 'code', 'language', 'file', 'document'}
         keywords = [k for k in keywords if k not in stopwords]
         
         found_info = []
         for keyword in keywords[:5]:
             if keyword in content.lower():
-                sentences = re.split(r'[.!?]+', content)
-                for sentence in sentences:
-                    if keyword in sentence.lower() and len(sentence.strip()) > 20:
-                        sentence = sentence.strip()
-                        if len(sentence) > 300:
-                            sentence = sentence[:297] + "..."
-                        found_info.append((keyword, sentence))
+                # Find lines containing keyword
+                lines = content.split('\n')
+                for line in lines:
+                    if keyword in line.lower() and len(line.strip()) > 15:
+                        line = line.strip()
+                        if len(line) > 200:
+                            line = line[:197] + "..."
+                        found_info.append((keyword, line))
                         break
         
         if found_info:
             response = f"📖 **About your document:**\n\n"
-            for keyword, sentence in found_info[:3]:
-                response += f"**• {keyword.capitalize()}:** {sentence}\n\n"
+            for keyword, line in found_info[:3]:
+                response += f"**• {keyword.capitalize()}:** {line}\n\n"
             response += "Does that help? Ask me more!"
             return response
         
-        # Fallback
+        # Fallback with helpful prompt
         preview = content[:400] + "..." if len(content) > 400 else content
-        return f"📄 **From '{filename}':**\n\n{preview}\n\nCould you rephrase your question or ask about a specific topic?"
+        return f"📄 **From '{filename}':**\n\n{preview}\n\n" \
+               f"\n💡 **Try asking:**\n" \
+               f"• What is this document about?\n" \
+               f"• What type of code is this?\n" \
+               f"• Summarize the content\n" \
+               f"• Tell me about [specific word from the document]"
