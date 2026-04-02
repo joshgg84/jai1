@@ -35,9 +35,9 @@ class JAIPersonality:
             return weather_response
         
         # ========== STEP 2: WEB SEARCH (FOR QUESTIONS) ==========
-        # Check if message is a question that needs searching
+        # Check if message is a question or contains question words
         is_question = message.strip().endswith('?')
-        has_question_word = any(word in msg for word in ['who', 'what', 'where', 'when', 'why', 'how'])
+        has_question_word = any(word in msg.split()[:3] for word in ['who', 'what', 'where', 'when', 'why', 'how'])
         
         if is_question or has_question_word:
             logger.info(f"Question detected: {message}")
@@ -48,10 +48,7 @@ class JAIPersonality:
                 response = f"🔍 {search_result}"
                 JAIMemory.save_conversation(client_id, message, response)
                 return response
-            else:
-                # If search fails, return a helpful message instead of slang
-                logger.info(f"Search failed for: {message}")
-                return "I couldn't find that information online. Could you rephrase your question or ask me something else? I can also learn if you teach me!"
+            # If search fails, continue to other responses (don't show error)
         
         # ========== STEP 3: CHECK MEMORY ==========
         
@@ -205,7 +202,6 @@ class JAIPersonality:
         
         # ========== STEP 14: CALCULATIONS ==========
         if any(op in msg for op in ["+", "-", "*", "/", "%", "calculate", "what is"]):
-            # Extract numbers for calculation
             numbers = re.findall(r'\d+', message)
             if len(numbers) >= 2:
                 calc_result = Calculator.calculate(message)
@@ -251,7 +247,7 @@ class JAIPersonality:
             if polarity < -0.6:
                 return "That sounds really heavy. I am here with you. Want to talk it through? No pressure."
         
-        # ========== STEP 20: CASUAL RESPONSES (NO NIGERIAN SLANG) ==========
+        # ========== STEP 20: CASUAL RESPONSES ==========
         casual = JAICasual.get_casual_response(message)
         if casual:
             return casual
@@ -264,7 +260,7 @@ class JAIPersonality:
         if conv:
             return conv
         
-        # ========== STEP 21: DEFAULT FALLBACK (CLEAN ENGLISH) ==========
+        # ========== STEP 21: DEFAULT FALLBACK ==========
         fallbacks = [
             "That's interesting. Tell me more!",
             "I hear you. What else is on your mind?",
