@@ -16,38 +16,46 @@ class WebSearch:
     
     @classmethod
     def search_online(cls, query):
-        """Search online using multiple APIs"""
+        """Search online using Wikipedia API"""
         try:
-            encoded_query = requests.utils.quote(query)
+            # Clean the query - remove question words
+            clean_query = query.lower()
+            for word in ['who is', 'what is', 'where is', 'when is', 'why is', 'how to', 
+                        'tell me about', 'explain', 'define', 'what are', 'who was']:
+                if clean_query.startswith(word):
+                    clean_query = clean_query[len(word):].strip()
             
-            # Try Wikipedia API first (most reliable)
-            wiki_url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{encoded_query}'
-            wiki_response = requests.get(wiki_url, timeout=10)
+            # Remove question mark
+            clean_query = clean_query.replace('?', '').strip()
             
-            if wiki_response.status_code == 200:
-                wiki_data = wiki_response.json()
-                if wiki_data.get('extract'):
-                    extract = wiki_data['extract']
+            # Format for Wikipedia - replace spaces with underscore
+            page_title = clean_query.replace(' ', '_')
+            
+            # Try Wikipedia API
+            url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{page_title}'
+            logger.info(f"Searching Wikipedia: {url}")
+            
+            response = requests.get(url, timeout=10, headers={'User-Agent': 'JAI-Bot/1.0'})
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('extract'):
+                    extract = data['extract']
                     # Clean up the extract
                     extract = re.sub(r'\([^)]*\)', '', extract)
                     extract = ' '.join(extract.split())
                     if len(extract) > 50:
-                        logger.info(f"Wikipedia search successful for: {query}")
+                        logger.info(f"Found Wikipedia page for: {clean_query}")
                         return extract
             
-            # Try DuckDuckGo API
-            ddg_url = f'https://api.duckduckgo.com/?q={encoded_query}&format=json&no_html=1'
-            ddg_response = requests.get(ddg_url, timeout=10)
+            # If exact page not found, try search
+            search_url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{page_title.replace(" ", "_")}'
+            search_response = requests.get(search_url, timeout=10)
             
-            if ddg_response.status_code == 200:
-                data = ddg_response.json()
-                
-                if data.get('AbstractText'):
-                    return data['AbstractText']
-                elif data.get('Definition'):
-                    return data['Definition']
-                elif data.get('Answer'):
-                    return data['Answer']
+            if search_response.status_code == 200:
+                data = search_response.json()
+                if data.get('extract'):
+                    return data['extract']
             
             return None
                 
