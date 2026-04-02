@@ -15,7 +15,7 @@ from jai_currency import JAICurrency
 from jai_grammar import JAIGrammar
 from jai_grammar_long import JAIGrammarLong
 from jai_memory import JAIMemory
-from jai_services import WebSearch, Weather, Calculator, TimeService
+from jai_services import WebSearch, Weather, Calculator, TimeService, GeneralKnowledge
 from jai_document import DocumentHandler
 
 logger = logging.getLogger(__name__)
@@ -30,9 +30,7 @@ class JAIPersonality:
         msg = message.lower().strip()
         original_message = message
         
-        # ========== DOCUMENT INTELLIGENCE (HIGHEST PRIORITY) ==========
-        
-        # Command to upload document via base64
+        # ========== DOCUMENT UPLOAD COMMAND ==========
         if msg.startswith('upload_doc:'):
             try:
                 parts = message.split(':', 2)
@@ -52,7 +50,7 @@ class JAIPersonality:
                                f"📊 {len(text)} characters\n" \
                                f"📝 Preview: \"{preview}\"\n\n" \
                                f"{simplified}\n\n" \
-                               f"💡 **Now just ask me anything about this document!** No ID needed - type naturally."
+                               f"💡 **Now ask me anything!** I'll answer from your document or search online."
                     else:
                         return "❌ File appears empty or unreadable. Please check the file and try again."
                 else:
@@ -61,30 +59,33 @@ class JAIPersonality:
                 logger.error(f"Document upload error: {e}")
                 return f"❌ Error: {str(e)}"
         
-        # Check if user has a document and this is a natural question (not a command)
-        if DocumentHandler.has_document(client_id) and not msg.startswith(('upload_doc:', 'ask_doc:', 'teach', 'next time', 'motivate', 'joke', 'weather', 'time', 'date', 'currency')):
-            # This is likely a question about their document
-            answer = DocumentHandler.answer_question(client_id, original_message)
-            if answer:
-                JAIMemory.save_conversation(client_id, original_message, answer)
-                return answer
-        
         # ========== WEATHER ==========
         weather_response = Weather.detect_weather_query(original_message)
         if weather_response:
             JAIMemory.save_conversation(client_id, original_message, weather_response)
             return weather_response
         
-        # ========== WEB SEARCH ==========
-        is_question = '?' in original_message
-        starts_with_question = original_message.lower().startswith(('who ', 'what ', 'where ', 'when ', 'why ', 'how '))
+        # ========== WEB SEARCH (for general knowledge questions) ==========
+        # Check if this is a general knowledge question (not document-specific)
+        is_general = GeneralKnowledge.is_general_question(original_message)
         
-        if is_question or starts_with_question:
+        if is_general or (not DocumentHandler.has_document(client_id) and ('?' in original_message or original_message.lower().startswith(('who ', 'what ', 'where ', 'when ', 'why ', 'how ')))):
             search_result = WebSearch.search_online(original_message)
             if search_result:
                 response = f"🔍 {search_result}"
                 JAIMemory.save_conversation(client_id, original_message, response)
                 return response
+        
+        # ========== DOCUMENT INTELLIGENCE (if document loaded) ==========
+        if DocumentHandler.has_document(client_id):
+            # Check if question is document-specific
+            doc = DocumentHandler.get_user_document(client_id)
+            if doc:
+                # Answer from document
+                doc_answer = DocumentHandler.answer_question(client_id, original_message)
+                if doc_answer and not doc_answer.startswith("🔍"):
+                    JAIMemory.save_conversation(client_id, original_message, doc_answer)
+                    return doc_answer
         
         # ========== MEMORY ==========
         
@@ -175,7 +176,13 @@ class JAIPersonality:
         if any(g in msg for g in ["hi", "hello", "hey", "howdy"]):
             if user_name:
                 return f"Hello {user_name}! 😊 How can I help you today?\n\n📄 Upload a document\n🔍 Ask a question\n💬 Just chat"
-            return "Hello! 😊 I can help you with:\n\n📄 **Documents** - Upload PDF/DOCX/TXT\n🔍 **Search** - Ask me anything\n🌤️ **Weather** - Check conditions\n💰 **Currency** - Live rates\n\nWhat would you like?"
+            
+            doc_status = ""
+            if DocumentHandler.has_document(client_id):
+                doc = DocumentHandler.get_user_document(client_id)
+                doc_status = f"\n\n📄 **You have a document loaded:** '{doc['filename']}'\nAsk me questions about it!"
+            
+            return f"Hello! 😊 I can help you with:\n\n📄 **Documents** - Upload PDF/DOCX/TXT\n🔍 **Search** - Ask me anything\n🌤️ **Weather** - Check conditions\n💰 **Currency** - Live rates\n🧮 **Calculate** - Math problems{doc_status}\n\nWhat would you like?"
         
         # ========== HOW ARE YOU ==========
         if any(h in msg for h in ["how are you", "how you doing", "how's it going"]):
@@ -208,7 +215,7 @@ class JAIPersonality:
                    f"🌤️ **Weather**\n• Current conditions anywhere\n• Temperature and forecasts\n\n" \
                    f"💰 **Currency**\n• Live exchange rates\n• Convert between currencies\n\n" \
                    f"🧮 **Calculator**\n• Math calculations\n• Percentages and more\n\n" \
-                   f"💾 **Memory**\n• I remember what you teach me\n• Learn your preferences\n\n{doc_status}"
+                   f"💾 **Memory**\n• I remember what you teach me\n• Learn your preferences\n{doc_status}"
         
         # ========== JOKES ==========
         if any(j in msg for j in ["joke", "funny", "make me laugh"]):
@@ -255,7 +262,7 @@ class JAIPersonality:
         ]
         
         # If user has a document, remind them
-        if DocumentHandler.has_document(client_id) and not any(f in msg for f in fallbacks):
+        if DocumentHandler.has_document(client_id):
             doc = DocumentHandler.get_user_document(client_id)
             fallbacks.insert(0, f"I see you have a document '{doc['filename']}' loaded. Want to ask me about it?")
         
