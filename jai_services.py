@@ -29,7 +29,7 @@ class WebSearch:
             logger.info(f"Original query: {query}")
             logger.info(f"Extracted subject: {clean_query}")
             
-            # Check for ambiguous terms first
+            # Check for ambiguous terms first (ALWAYS check before searching)
             ambiguous_result = cls._check_ambiguity(clean_query, query)
             if ambiguous_result:
                 return ambiguous_result
@@ -48,6 +48,9 @@ class WebSearch:
     @classmethod
     def _check_ambiguity(cls, term, original_query):
         """Check if term is ambiguous and handle clarification"""
+        
+        # Convert to lowercase for matching
+        term_lower = term.lower()
         
         # Known ambiguous terms with their possible meanings
         ambiguous_terms = {
@@ -109,8 +112,6 @@ class WebSearch:
             ]
         }
         
-        term_lower = term.lower()
-        
         # Clean up old pending clarifications (older than 2 minutes)
         current_time = datetime.now()
         to_delete = []
@@ -120,28 +121,40 @@ class WebSearch:
         for key in to_delete:
             del cls._pending_clarifications[key]
         
+        # Check if this term is ambiguous
         if term_lower in ambiguous_terms:
             # Create a hash key from the original query to track it
             query_hash = original_query.lower().strip()
             
             # Check if this is a clarification response (number or specific name)
-            for i, option in enumerate(ambiguous_terms[term_lower]):
-                # Check if user replied with number
-                if term_lower == str(i + 1):
-                    # User clarified with number
-                    if query_hash in cls._pending_clarifications:
-                        del cls._pending_clarifications[query_hash]
-                    return cls._search_wikipedia(option['search'])
-                
-                # Check if user replied with part of the option name
-                if option['name'].lower() in term_lower or term_lower in option['name'].lower():
-                    if query_hash in cls._pending_clarifications:
-                        del cls._pending_clarifications[query_hash]
-                    return cls._search_wikipedia(option['search'])
-            
-            # Not a clarification response - check if we already asked
+            # First, check if we have a pending clarification for this query
             if query_hash in cls._pending_clarifications:
-                # Already asked, user gave unclear response, ask again
+                pending = cls._pending_clarifications[query_hash]
+                
+                # Check if user replied with a number (1, 2, etc.)
+                if term_lower.isdigit():
+                    num = int(term_lower)
+                    if 1 <= num <= len(ambiguous_terms[term_lower]):
+                        # User clarified with number
+                        selected = ambiguous_terms[term_lower][num - 1]
+                        del cls._pending_clarifications[query_hash]
+                        return cls._search_wikipedia(selected['search'])
+                
+                # Check if user replied with part of any option name
+                for i, option in enumerate(ambiguous_terms[term_lower]):
+                    # Check if user's response matches this option
+                    user_response_lower = term_lower
+                    option_name_lower = option['name'].lower()
+                    option_search_lower = option['search'].lower()
+                    
+                    if (user_response_lower in option_name_lower or 
+                        option_name_lower in user_response_lower or
+                        user_response_lower in option_search_lower):
+                        # User clarified with name
+                        del cls._pending_clarifications[query_hash]
+                        return cls._search_wikipedia(option['search'])
+                
+                # User gave unclear response, ask again
                 options_text = "\n".join([f"• {i+1}. {opt['name']}" for i, opt in enumerate(ambiguous_terms[term_lower])])
                 return f"🔍 **Which {term} do you mean?**\n\n{options_text}\n\nPlease reply with the number (e.g., '1') or full name."
             
@@ -159,6 +172,7 @@ class WebSearch:
     @classmethod
     def _extract_subject(cls, query):
         """Extract the main subject from a question"""
+        original_query = query
         query_lower = query.lower().strip()
         
         # Remove question mark
@@ -190,13 +204,13 @@ class WebSearch:
                 # Get the last word (likely the subject)
                 query = words[-1]
         
-        # Handle numbers (clarification responses)
-        if query.isdigit() or (len(query) == 1 and query.isdigit()):
-            return query
-        
-        # Capitalize first letter for Wikipedia
+        # Don't capitalize numbers (for clarification responses)
         if query and not query[0].isdigit():
             query = query[0].upper() + query[1:]
+        
+        # For very short queries like "python", return as-is for ambiguity check
+        if len(query) < 3 and query.lower() in ['python', 'java', 'c', 'c++', 'go', 'rust']:
+            return query.lower()
         
         return query
     
