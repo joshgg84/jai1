@@ -18,9 +18,17 @@ class WebSearch:
     _pending_clarifications = {}  # {query_hash: {'options': [...], 'timestamp': ...}}
     
     @classmethod
-    def search_online(cls, query):
+    def search_online(cls, query, original_message=None):
         """Quick search using Wikipedia API with disambiguation support"""
         try:
+            # Use original message if provided (for clarification responses)
+            search_query = original_message if original_message else query
+            
+            # FIRST: Check if this is a clarification response to a pending question
+            clarification_result = cls._check_clarification_response(search_query)
+            if clarification_result:
+                return clarification_result
+            
             # Clean the query - extract the main subject
             clean_query = cls._extract_subject(query)
             if not clean_query or len(clean_query) < 3:
@@ -29,7 +37,7 @@ class WebSearch:
             logger.info(f"Original query: {query}")
             logger.info(f"Extracted subject: {clean_query}")
             
-            # Check for ambiguous terms first (ALWAYS check before searching)
+            # Check for ambiguous terms
             ambiguous_result = cls._check_ambiguity(clean_query, query)
             if ambiguous_result:
                 return ambiguous_result
@@ -46,8 +54,59 @@ class WebSearch:
             return None
     
     @classmethod
+    def _check_clarification_response(cls, message):
+        """Check if user is responding to a pending clarification"""
+        message_lower = message.lower().strip()
+        
+        # Clean up old pending clarifications
+        current_time = datetime.now()
+        to_delete = []
+        for key, data in cls._pending_clarifications.items():
+            if (current_time - data['timestamp']).seconds > 120:
+                to_delete.append(key)
+        for key in to_delete:
+            del cls._pending_clarifications[key]
+        
+        # Check each pending clarification
+        for query_hash, pending in list(cls._pending_clarifications.items()):
+            options = pending['options']
+            
+            # Check if user replied with a number
+            if message_lower.isdigit():
+                num = int(message_lower)
+                if 1 <= num <= len(options):
+                    selected = options[num - 1]
+                    del cls._pending_clarifications[query_hash]
+                    return cls._search_wikipedia(selected['search'])
+            
+            # Check if user replied with text matching any option
+            for option in options:
+                option_name_lower = option['name'].lower()
+                option_search_lower = option['search'].lower()
+                
+                # Check various matching patterns
+                if (message_lower in option_name_lower or 
+                    option_name_lower in message_lower or
+                    message_lower in option_search_lower or
+                    option_search_lower in message_lower):
+                    # User clarified with name
+                    del cls._pending_clarifications[query_hash]
+                    return cls._search_wikipedia(option['search'])
+            
+            # Check for keywords like "programming", "snake", etc.
+            for option in options:
+                # Extract keywords from option name
+                keywords = re.findall(r'\(([^)]+)\)', option['name'])
+                for keyword in keywords:
+                    if keyword.lower() in message_lower:
+                        del cls._pending_clarifications[query_hash]
+                        return cls._search_wikipedia(option['search'])
+        
+        return None
+    
+    @classmethod
     def _check_ambiguity(cls, term, original_query):
-        """Check if term is ambiguous and handle clarification"""
+        """Check if term is ambiguous and ask for clarification"""
         
         # Convert to lowercase for matching
         term_lower = term.lower()
@@ -112,51 +171,18 @@ class WebSearch:
             ]
         }
         
-        # Clean up old pending clarifications (older than 2 minutes)
-        current_time = datetime.now()
-        to_delete = []
-        for key, data in cls._pending_clarifications.items():
-            if (current_time - data['timestamp']).seconds > 120:
-                to_delete.append(key)
-        for key in to_delete:
-            del cls._pending_clarifications[key]
-        
         # Check if this term is ambiguous
         if term_lower in ambiguous_terms:
-            # Create a hash key from the original query to track it
+            # Create a hash key from the original query
             query_hash = original_query.lower().strip()
             
-            # Check if this is a clarification response (number or specific name)
-            # First, check if we have a pending clarification for this query
+            # Check if we already asked about this term
             if query_hash in cls._pending_clarifications:
-                pending = cls._pending_clarifications[query_hash]
-                
-                # Check if user replied with a number (1, 2, etc.)
-                if term_lower.isdigit():
-                    num = int(term_lower)
-                    if 1 <= num <= len(ambiguous_terms[term_lower]):
-                        # User clarified with number
-                        selected = ambiguous_terms[term_lower][num - 1]
-                        del cls._pending_clarifications[query_hash]
-                        return cls._search_wikipedia(selected['search'])
-                
-                # Check if user replied with part of any option name
-                for i, option in enumerate(ambiguous_terms[term_lower]):
-                    # Check if user's response matches this option
-                    user_response_lower = term_lower
-                    option_name_lower = option['name'].lower()
-                    option_search_lower = option['search'].lower()
-                    
-                    if (user_response_lower in option_name_lower or 
-                        option_name_lower in user_response_lower or
-                        user_response_lower in option_search_lower):
-                        # User clarified with name
-                        del cls._pending_clarifications[query_hash]
-                        return cls._search_wikipedia(option['search'])
-                
-                # User gave unclear response, ask again
-                options_text = "\n".join([f"• {i+1}. {opt['name']}" for i, opt in enumerate(ambiguous_terms[term_lower])])
-                return f"🔍 **Which {term} do you mean?**\n\n{options_text}\n\nPlease reply with the number (e.g., '1') or full name."
+                # Already asked, but user didn't give a valid response yet
+                # Return None to let normal search continue? No, keep waiting
+                options = ambiguous_terms[term_lower]
+                options_text = "\n".join([f"• {i+1}. {opt['name']}" for i, opt in enumerate(options)])
+                return f"🔍 **Which {term} do you mean?**\n\n{options_text}\n\nPlease reply with the number (e.g., '1') or name like 'programming language'."
             
             # First time asking - store and return clarification question
             cls._pending_clarifications[query_hash] = {
@@ -172,7 +198,6 @@ class WebSearch:
     @classmethod
     def _extract_subject(cls, query):
         """Extract the main subject from a question"""
-        original_query = query
         query_lower = query.lower().strip()
         
         # Remove question mark
@@ -201,16 +226,11 @@ class WebSearch:
         if len(query) < 3:
             words = query_lower.split()
             if words:
-                # Get the last word (likely the subject)
                 query = words[-1]
         
-        # Don't capitalize numbers (for clarification responses)
+        # Capitalize first letter for Wikipedia
         if query and not query[0].isdigit():
             query = query[0].upper() + query[1:]
-        
-        # For very short queries like "python", return as-is for ambiguity check
-        if len(query) < 3 and query.lower() in ['python', 'java', 'c', 'c++', 'go', 'rust']:
-            return query.lower()
         
         return query
     
@@ -231,7 +251,7 @@ class WebSearch:
                 data = response.json()
                 if data.get('extract'):
                     extract = cls._clean_extract(data['extract'])
-                    return extract
+                    return f"🔍 {extract}"
             
             # Try search API if direct page fails
             search_url = f'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={term}&format=json'
@@ -252,7 +272,7 @@ class WebSearch:
                         page_data = page_response.json()
                         if page_data.get('extract'):
                             extract = cls._clean_extract(page_data['extract'])
-                            return extract
+                            return f"🔍 {extract}"
             
             return None
         except Exception as e:
