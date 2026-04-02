@@ -12,67 +12,23 @@ logger = logging.getLogger(__name__)
 
 # ========== WEB SEARCH MODULE ==========
 class WebSearch:
-    """Search online for factual questions"""
+    """Fast and efficient web search"""
     
     @classmethod
     def search_online(cls, query):
-        """Search online using Wikipedia API"""
+        """Quick search using Wikipedia API"""
         try:
-            # Extract search term from question
-            search_term = query.lower()
+            # Clean the query
+            clean_query = cls._clean_query(query)
+            if not clean_query or len(clean_query) < 3:
+                return None
             
-            # Remove question words
-            for word in ['what is', 'who is', 'where is', 'when is', 'why is', 'how to', 
-                        'tell me about', 'explain', 'define']:
-                if search_term.startswith(word):
-                    search_term = search_term[len(word):].strip()
-                    break
+            logger.info(f"Searching: {clean_query}")
             
-            # Remove question mark
-            search_term = search_term.replace('?', '').strip()
-            
-            # Check for hardcoded Python response
-            if search_term.lower() == 'python':
-                logger.info("Returning hardcoded Python response")
-                return "Python is a high-level, interpreted programming language known for its simplicity and readability. Created by Guido van Rossum and first released in 1991, Python emphasizes code readability with its notable use of significant whitespace. It supports multiple programming paradigms, including procedural, object-oriented, and functional programming. Python is widely used for web development, data science, artificial intelligence, scientific computing, and automation."
-            
-            # Capitalize first letter for Wikipedia
-            search_term = search_term[0].upper() + search_term[1:] if search_term else search_term
-            
-            logger.info(f"Searching Wikipedia for: {search_term}")
-            
-            # Try direct Wikipedia API
-            encoded_term = search_term.replace(' ', '_')
-            url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{encoded_term}'
-            
-            response = requests.get(url, timeout=10, headers={'User-Agent': 'JAI-Bot/1.0'})
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('extract'):
-                    extract = data['extract']
-                    # Clean up
-                    extract = re.sub(r'\([^)]*\)', '', extract)
-                    extract = ' '.join(extract.split())
-                    if len(extract) > 50:
-                        logger.info(f"Found Wikipedia page for: {search_term}")
-                        return extract
-            
-            # If direct fails, try with first word only
-            first_word = search_term.split()[0] if ' ' in search_term else search_term
-            if first_word != search_term:
-                url2 = f'https://en.wikipedia.org/api/rest_v1/page/summary/{first_word}'
-                response2 = requests.get(url2, timeout=10)
-                
-                if response2.status_code == 200:
-                    data2 = response2.json()
-                    if data2.get('extract'):
-                        extract = data2['extract']
-                        extract = re.sub(r'\([^)]*\)', '', extract)
-                        extract = ' '.join(extract.split())
-                        if len(extract) > 50:
-                            logger.info(f"Found Wikipedia page for: {first_word}")
-                            return extract
+            # Try Wikipedia directly
+            result = cls._search_wikipedia(clean_query)
+            if result:
+                return result
             
             return None
                 
@@ -81,34 +37,114 @@ class WebSearch:
             return None
     
     @classmethod
-    def should_search(cls, message):
-        """Determine if message should trigger web search"""
-        msg_lower = message.lower().strip()
+    def _clean_query(cls, query):
+        """Extract the main search term from a question"""
+        query_lower = query.lower().strip()
         
-        # Question words that trigger search
-        question_triggers = [
+        # Remove common question prefixes
+        prefixes = [
             'who is', 'who was', 'who are',
-            'what is', 'what was', 'what are', 'what does',
+            'what is', 'what was', 'what are',
             'where is', 'where was', 'where are',
             'when is', 'when was', 'when did',
             'why is', 'why was', 'why did',
-            'how to', 'how do', 'how does'
+            'how to', 'how do', 'how does',
+            'tell me about', 'explain', 'define'
         ]
         
-        for trigger in question_triggers:
-            if msg_lower.startswith(trigger):
-                return True
+        for prefix in prefixes:
+            if query_lower.startswith(prefix):
+                query = query[len(prefix):].strip()
+                break
         
-        # If message ends with question mark
-        if message.strip().endswith('?'):
+        # Remove question mark and extra spaces
+        query = query.replace('?', '').strip()
+        
+        # Capitalize first letter for Wikipedia
+        if query:
+            query = query[0].upper() + query[1:]
+        
+        return query
+    
+    @classmethod
+    def _search_wikipedia(cls, term):
+        """Search Wikipedia for a term"""
+        try:
+            # Format the term for URL
+            formatted_term = term.replace(' ', '_')
+            url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{formatted_term}'
+            
+            response = requests.get(url, timeout=5, headers={'User-Agent': 'JAI/1.0'})
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('extract'):
+                    # Get the first paragraph or two
+                    extract = data['extract']
+                    # Remove parentheticals
+                    extract = re.sub(r'\([^)]*\)', '', extract)
+                    # Clean up whitespace
+                    extract = ' '.join(extract.split())
+                    # Limit length
+                    if len(extract) > 500:
+                        extract = extract[:500] + "..."
+                    return extract
+            
+            return None
+        except Exception as e:
+            logger.error(f"Wikipedia search error: {e}")
+            return None
+    
+    @classmethod
+    def should_search(cls, message):
+        """Quick check if message needs web search"""
+        msg = message.lower().strip()
+        
+        # Check for question words at start
+        question_starts = ['who', 'what', 'where', 'when', 'why', 'how']
+        first_word = msg.split()[0] if msg.split() else ''
+        
+        if first_word in question_starts:
             return True
+        
+        # Check for question mark
+        if '?' in msg:
+            return True
+        
+        # Check for common question patterns
+        question_patterns = ['what is', 'who is', 'where is', 'when is', 'why is', 'how to']
+        for pattern in question_patterns:
+            if pattern in msg:
+                return True
         
         return False
 
 
+# ========== FAST CACHE ==========
+_search_cache = {}
+_cache_duration = 3600  # 1 hour
+
+def get_cached_search(query):
+    """Get cached search result"""
+    key = query.lower().strip()
+    if key in _search_cache:
+        cache_time = _search_cache[key]['time']
+        if (datetime.now() - cache_time).seconds < _cache_duration:
+            return _search_cache[key]['result']
+    return None
+
+def cache_search_result(query, result):
+    """Cache search result"""
+    key = query.lower().strip()
+    _search_cache[key] = {
+        'result': result,
+        'time': datetime.now()
+    }
+
+
 # ========== WEATHER MODULE ==========
 class Weather:
-    """Get weather information"""
+    """Get weather information quickly"""
     
     @classmethod
     def get_weather(cls, city=None):
@@ -117,13 +153,14 @@ class Weather:
             city = "Lagos"
         
         try:
+            # Using wttr.in with simple format
             url = f"https://wttr.in/{city}?format=%C:+%t,+%w,+%h&m"
-            response = requests.get(url, timeout=10)
+            response = requests.get(url, timeout=5)
             
             if response.status_code == 200:
                 weather_data = response.text.strip()
                 if weather_data and not weather_data.startswith('Unknown'):
-                    return f"🌤️ Weather in {city.title()}: {weather_data}"
+                    return f"🌤️ {city.title()}: {weather_data}"
         except Exception as e:
             logger.warning(f"Weather failed: {e}")
         
@@ -131,10 +168,11 @@ class Weather:
     
     @classmethod
     def detect_weather_query(cls, message):
-        """Detect weather question"""
+        """Quick weather detection"""
         msg_lower = message.lower()
         
-        if any(word in msg_lower for word in ['weather', 'temperature', 'forecast']):
+        if 'weather' in msg_lower or 'temperature' in msg_lower:
+            # Extract city
             city = None
             if 'in' in msg_lower:
                 parts = msg_lower.split('in')
@@ -147,11 +185,12 @@ class Weather:
 
 # ========== CALCULATION MODULE ==========
 class Calculator:
-    """Handle mathematical calculations"""
+    """Fast math calculations"""
     
     @staticmethod
     def calculate(expr):
         try:
+            # Clean the expression
             expr = expr.replace('plus', '+').replace('minus', '-')
             expr = expr.replace('times', '*').replace('divided by', '/')
             expr = re.sub(r"[^0-9+\-*/%.() ]", "", expr)
@@ -159,18 +198,58 @@ class Calculator:
             return f"🧮 {expr} = {result}"
         except:
             return None
+    
+    @staticmethod
+    def should_calculate(message):
+        msg_lower = message.lower()
+        return any(op in msg_lower for op in ["+", "-", "*", "/", "%", "calculate"])
 
 
 # ========== TIME MODULE ==========
 class TimeService:
-    """Handle time and date"""
+    """Fast time and date"""
     
     @staticmethod
     def get_time():
         now = datetime.now()
-        return f"🕐 The time is {now.strftime('%I:%M %p')}"
+        return f"🕐 {now.strftime('%I:%M %p')}"
     
     @staticmethod
     def get_date():
         now = datetime.now()
-        return f"📅 Today is {now.strftime('%A, %B %d, %Y')}"
+        return f"📅 {now.strftime('%A, %B %d, %Y')}"
+    
+    @staticmethod
+    def should_respond(message):
+        msg_lower = message.lower()
+        return "time" in msg_lower or "date" in msg_lower
+
+
+# ========== GENERAL KNOWLEDGE DETECTION ==========
+class GeneralKnowledge:
+    """Detect if question needs web search"""
+    
+    @staticmethod
+    def is_general_question(question):
+        """Quick check if this is a general knowledge question"""
+        q_lower = question.lower()
+        
+        # Patterns that indicate general knowledge
+        patterns = [
+            r'who (is|was|created|founded|invented)',
+            r'what (is|was|are)',
+            r'where (is|was|are)',
+            r'when (is|was|did)',
+            r'why (is|was|did)',
+            r'how (to|do|does|is)',
+            r'what does .+ mean',
+            r'explain .+',
+            r'define .+',
+            r'tell me about .+'
+        ]
+        
+        for pattern in patterns:
+            if re.search(pattern, q_lower):
+                return True
+        
+        return False
