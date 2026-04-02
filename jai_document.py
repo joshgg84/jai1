@@ -1,5 +1,5 @@
 """JAI - Document Intelligence Module
-Handles document upload, text extraction, simplification, and Q&A.
+Handles document upload, text extraction, simplification, and intelligent Q&A.
 Stores documents per user - no ID needed!
 """
 
@@ -23,7 +23,7 @@ except ImportError as e:
     logger.warning(f"Document processing libraries not installed: {e}")
 
 # Store documents per user (client_id)
-_user_documents = {}  # {client_id: {'filename': str, 'content': str, 'simplified': str, 'created_at': datetime}}
+_user_documents = {}
 
 
 class DocumentHandler:
@@ -36,11 +36,10 @@ class DocumentHandler:
             file_content = base64.b64decode(base64_content)
             file_ext = filename.split('.')[-1].lower()
             
-            logger.info(f"Processing file: {filename}, size: {len(file_content)} bytes, type: {file_ext}")
+            logger.info(f"Processing file: {filename}, size: {len(file_content)} bytes")
             
             if file_ext == 'txt':
                 text = file_content.decode('utf-8')
-                logger.info(f"Extracted {len(text)} characters from TXT file")
                 return text
             
             elif file_ext == 'pdf' and DOCUMENT_SUPPORT:
@@ -52,12 +51,8 @@ class DocumentHandler:
                 with open(tmp_path, 'rb') as f:
                     pdf_reader = PyPDF2.PdfReader(f)
                     for page in pdf_reader.pages:
-                        page_text = page.extract_text()
-                        if page_text:
-                            text += page_text + "\n"
-                
+                        text += page.extract_text() + "\n"
                 os.unlink(tmp_path)
-                logger.info(f"Extracted {len(text)} characters from PDF file")
                 return text if text.strip() else None
             
             elif file_ext == 'docx' and DOCUMENT_SUPPORT:
@@ -66,16 +61,11 @@ class DocumentHandler:
                     tmp_path = tmp_file.name
                 
                 doc = docx.Document(tmp_path)
-                text = "\n".join([paragraph.text for paragraph in doc.paragraphs if paragraph.text.strip()])
-                
+                text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
                 os.unlink(tmp_path)
-                logger.info(f"Extracted {len(text)} characters from DOCX file")
                 return text if text.strip() else None
             
-            else:
-                logger.warning(f"Unsupported file type: {file_ext}")
-                return None
-                
+            return None
         except Exception as e:
             logger.error(f"Error extracting text: {e}")
             return None
@@ -88,52 +78,32 @@ class DocumentHandler:
         
         # Detect document type
         text_lower = text.lower()
-        if any(word in text_lower for word in ['contract', 'agreement', 'terms', 'party', 'hereby']):
-            icon = "⚖️"
-            doc_name = "Legal Document"
-        elif any(word in text_lower for word in ['exam', 'test', 'question', 'student', 'course']):
-            icon = "📚"
-            doc_name = "Educational Document"
-        elif any(word in text_lower for word in ['http', 'server', 'function', 'const', 'let', 'var', 'app.get', 'app.post']):
-            icon = "💻"
-            doc_name = "Code File"
-        elif any(word in text_lower for word in ['invoice', 'payment', 'amount', 'due']):
-            icon = "💰"
-            doc_name = "Financial Document"
+        if 'contract' in text_lower or 'agreement' in text_lower:
+            icon, doc_type = "⚖️", "Legal Document"
+        elif 'http' in text_lower or 'server' in text_lower or 'const' in text_lower:
+            icon, doc_type = "💻", "Code File"
         else:
-            icon = "📄"
-            doc_name = "Document"
+            icon, doc_type = "📄", "Document"
         
-        # Extract key points (first few lines or sentences)
-        lines = text.split('\n')[:10]
-        key_points = []
-        for line in lines:
-            line = line.strip()
-            if len(line) > 20 and len(key_points) < 5:
-                if len(line) > 150:
-                    line = line[:147] + "..."
-                key_points.append(line)
+        # Get first few lines
+        lines = [l.strip() for l in text.split('\n') if l.strip() and len(l.strip()) > 10][:6]
         
-        # Build response
-        simplified = f"{icon} **{doc_name} Simplified**\n\n"
-        simplified += f"**File:** {filename}\n"
-        simplified += f"**Length:** {len(text)} characters\n\n"
+        simplified = f"{icon} **{doc_type}**\n\n"
+        simplified += f"📄 {filename}\n"
+        simplified += f"📊 {len(text)} characters\n\n"
         
-        if key_points:
-            simplified += f"**Main Content:**\n\n"
-            for i, point in enumerate(key_points, 1):
-                simplified += f"{i}. {point}\n\n"
-        else:
-            preview = text[:400] + "..." if len(text) > 400 else text
-            simplified += f"**Content:**\n\n{preview}\n\n"
+        if lines:
+            simplified += f"**Main content:**\n\n"
+            for i, line in enumerate(lines, 1):
+                simplified += f"{i}. {line[:150]}{'...' if len(line) > 150 else ''}\n\n"
         
-        simplified += f"**💡 Now you can ask me anything about this document!** Just type your question naturally."
+        simplified += f"💡 **Now ask me anything about this document!**"
         
         return simplified
     
     @staticmethod
     def store_document(client_id, filename, text, simplified):
-        """Store document for a specific user"""
+        """Store document for a user"""
         _user_documents[client_id] = {
             'filename': filename,
             'content': text,
@@ -141,33 +111,22 @@ class DocumentHandler:
             'created_at': datetime.now(),
             'size': len(text)
         }
-        logger.info(f"Document stored for user: {client_id}, size: {len(text)} chars")
         return True
     
     @staticmethod
     def get_user_document(client_id):
-        """Get document for a specific user"""
+        """Get user's document"""
         return _user_documents.get(client_id)
     
     @staticmethod
     def has_document(client_id):
-        """Check if user has a document loaded"""
+        """Check if user has document"""
         return client_id in _user_documents
     
     @staticmethod
-    def clear_document(client_id):
-        """Clear document for a user"""
-        if client_id in _user_documents:
-            del _user_documents[client_id]
-            logger.info(f"Document cleared for user: {client_id}")
-            return True
-        return False
-    
-    @staticmethod
     def answer_question(client_id, question):
-        """Answer questions about user's document"""
+        """Intelligently answer ANY question about the document"""
         doc = DocumentHandler.get_user_document(client_id)
-        
         if not doc:
             return None
         
@@ -175,80 +134,126 @@ class DocumentHandler:
         filename = doc['filename']
         question_lower = question.lower().strip()
         
-        # Handle empty/short questions
-        if len(question_lower) < 5:
-            return f"💡 **Ask about '{filename}':**\n\nTry:\n• What is this document about?\n• What type of code is this?\n• Summarize the content\n• Tell me about [specific topic]"
+        # ========== SMART QUESTION DETECTION ==========
         
-        # Question about code/language type
-        if any(word in question_lower for word in ['what type', 'what language', 'what code', 'programming language', 'what is this code']):
-            # Detect language from content
-            if 'const' in content or 'let' in content or 'var' in content or 'function' in content:
-                if 'http' in content or 'server' in content:
-                    return f"💻 **This appears to be Node.js/JavaScript code!**\n\nThe document contains a Node.js server implementation using the HTTP module. It looks like a web server or API server.\n\nKey indicators:\n• Uses `const` and `let` (ES6 JavaScript)\n• Requires Node.js modules (http, fs, path)\n• Creates a server with http.createServer()\n\nWhat specific part would you like me to explain?"
-                else:
-                    return f"💻 **This appears to be JavaScript/Node.js code!**\n\nThe document contains JavaScript code, likely for a Node.js application.\n\nWhat would you like to know about the code?"
-            elif 'def ' in content or 'import' in content:
-                return f"🐍 **This appears to be Python code!**\n\nThe document contains Python code.\n\nWhat would you like to know about it?"
-            else:
-                return f"📄 **This appears to be a code/text file.**\n\nBased on the content, it contains programming code or configuration.\n\nWhat specific information are you looking for?"
-        
-        # Summary request
-        if any(word in question_lower for word in ['summary', 'overview', 'what is this about', 'tell me about it', 'what is it']):
-            # Get first few lines or sentences
-            lines = content.split('\n')[:8]
-            summary_points = []
-            for line in lines:
-                line = line.strip()
-                if len(line) > 20:
-                    if len(line) > 150:
-                        line = line[:147] + "..."
-                    summary_points.append(line)
+        # 1. SUMMARY QUESTIONS
+        if any(word in question_lower for word in ['summary', 'summarize', 'overview', 'what is this about', 'tell me about it', 'what does it say', 'gist']):
+            lines = [l.strip() for l in content.split('\n') if l.strip() and len(l.strip()) > 15]
+            summary = f"📋 **Summary of '{filename}':**\n\n"
             
-            if summary_points:
-                response = f"📋 **Summary of '{filename}':**\n\n"
-                for i, point in enumerate(summary_points[:5], 1):
-                    response += f"{i}. {point}\n\n"
-                
-                # Add document type detection
-                if 'const' in content or 'let' in content:
-                    response += "\n💡 **This appears to be JavaScript/Node.js code.** Ask me: 'What type of code is this?' for more details."
-                
-                response += "Anything specific you'd like to know?"
-                return response
+            if lines:
+                for i, line in enumerate(lines[:8], 1):
+                    summary += f"{i}. {line[:200]}{'...' if len(line) > 200 else ''}\n\n"
             else:
-                preview = content[:500] + "..." if len(content) > 500 else content
-                return f"📋 **From '{filename}':**\n\n{preview}\n\nWhat specific information are you looking for?"
+                summary += f"{content[:600]}...\n\n"
+            
+            summary += f"💡 This document has {len(content)} characters. Ask me specific questions about any part!"
+            return summary
         
-        # Search for keywords in content
-        keywords = re.findall(r'\b[a-z]{4,}\b', question_lower)
-        stopwords = {'what', 'does', 'this', 'that', 'tell', 'about', 'from', 'with', 'have', 'were', 'there', 'their', 'they', 'will', 'would', 'could', 'should', 'type', 'code', 'language', 'file', 'document'}
-        keywords = [k for k in keywords if k not in stopwords]
+        # 2. CODE TYPE QUESTIONS
+        if any(word in question_lower for word in ['what type', 'what language', 'what code', 'programming language', 'what is this code']):
+            if 'const' in content or 'let' in content or 'var' in content:
+                if 'http' in content or 'server' in content or 'require' in content:
+                    return f"💻 **This is Node.js/JavaScript code!**\n\n" \
+                           f"This appears to be a Node.js server application. It uses:\n" \
+                           f"• HTTP module for server creation\n" \
+                           f"• File system (fs) for file operations\n" \
+                           f"• Path module for file paths\n\n" \
+                           f"**What this code does:** Creates a web server that can handle HTTP requests.\n\n" \
+                           f"Want me to explain a specific part?"
+            elif 'def ' in content or 'import ' in content:
+                return f"🐍 **This is Python code!**\n\nWould you like me to explain what it does?"
+            else:
+                return f"📄 **This appears to be a code/text file.**\n\nLet me analyze the content for you. What specific information are you looking for?"
         
-        found_info = []
-        for keyword in keywords[:5]:
-            if keyword in content.lower():
-                # Find lines containing keyword
+        # 3. WHAT DOES [THING] DO/MEAN QUESTIONS
+        action_match = re.search(r'what does (?:the |this |that )?(.+?) (?:do|mean)', question_lower)
+        if action_match:
+            search_term = action_match.group(1).strip()
+            # Search for lines containing that term
+            lines = content.split('\n')
+            for line in lines:
+                if search_term.lower() in line.lower():
+                    return f"📖 **About '{search_term}':**\n\n```\n{line.strip()}\n```\n\nThis is what I found in your document. Need more details?"
+            
+            # If not found, show context
+            words = search_term.split()
+            for word in words[:2]:
+                for line in lines:
+                    if word in line.lower():
+                        return f"📖 **Found related content:**\n\n```\n{line.strip()}\n```\n\nIs this what you were asking about?"
+        
+        # 4. EXPLAIN QUESTIONS
+        if question_lower.startswith('explain'):
+            # Extract what to explain
+            explain_what = question_lower.replace('explain', '').replace('the', '').replace('this', '').replace('that', '').strip()
+            if explain_what:
                 lines = content.split('\n')
                 for line in lines:
-                    if keyword in line.lower() and len(line.strip()) > 15:
-                        line = line.strip()
-                        if len(line) > 200:
-                            line = line[:197] + "..."
-                        found_info.append((keyword, line))
+                    if explain_what in line.lower():
+                        return f"📖 **Explanation of '{explain_what}':**\n\n```\n{line.strip()}\n```\n\nThis is from your document. Would you like me to elaborate?"
+        
+        # 5. COUNT/STATISTICS QUESTIONS
+        if 'how many' in question_lower:
+            if 'line' in question_lower:
+                line_count = len([l for l in content.split('\n') if l.strip()])
+                return f"📊 **Your document has {line_count} lines** of content."
+            if 'word' in question_lower:
+                word_count = len(content.split())
+                return f"📊 **Your document has approximately {word_count} words**."
+            if 'character' in question_lower:
+                return f"📊 **Your document has {len(content)} characters**."
+        
+        # 6. SPECIFIC KEYWORD SEARCH
+        # Extract important keywords from question
+        keywords = re.findall(r'\b[a-z]{4,}\b', question_lower)
+        stopwords = {'what', 'does', 'this', 'that', 'tell', 'about', 'from', 'with', 'have', 'were', 'there', 'their', 'they', 'will', 'would', 'could', 'should', 'type', 'code', 'language', 'file', 'document', 'please', 'help', 'know', 'want', 'need', 'can', 'you'}
+        keywords = [k for k in keywords if k not in stopwords]
+        
+        # Search for each keyword
+        lines = content.split('\n')
+        found_lines = []
+        for keyword in keywords[:5]:
+            for line in lines:
+                if keyword in line.lower() and len(line.strip()) > 20:
+                    if line.strip() not in found_lines:
+                        found_lines.append(line.strip())
                         break
         
-        if found_info:
-            response = f"📖 **About your document:**\n\n"
-            for keyword, line in found_info[:3]:
-                response += f"**• {keyword.capitalize()}:** {line}\n\n"
-            response += "Does that help? Ask me more!"
+        if found_lines:
+            response = f"📖 **Found in your document:**\n\n"
+            for line in found_lines[:4]:
+                response += f"```\n{line[:200]}{'...' if len(line) > 200 else ''}\n```\n\n"
+            response += f"💡 Ask me: 'Explain this' or 'What does this mean?' for more details."
             return response
         
-        # Fallback with helpful prompt
-        preview = content[:400] + "..." if len(content) > 400 else content
-        return f"📄 **From '{filename}':**\n\n{preview}\n\n" \
+        # 7. GENERAL QUESTION - Use best matching content
+        # Find most relevant section
+        sentences = re.split(r'[.!?\n]+', content)
+        best_match = None
+        best_score = 0
+        
+        question_words = set(question_lower.split())
+        for sentence in sentences:
+            sentence_lower = sentence.lower()
+            if len(sentence) < 20:
+                continue
+            # Count matching words
+            score = sum(1 for word in question_words if word in sentence_lower and len(word) > 3)
+            if score > best_score:
+                best_score = score
+                best_match = sentence.strip()
+                if best_score >= 2:
+                    break
+        
+        if best_match and best_score > 0:
+            return f"📖 **From your document:**\n\n```\n{best_match[:300]}{'...' if len(best_match) > 300 else ''}\n```\n\nDoes this answer your question? I can find more information."
+        
+        # 8. FALLBACK - Show relevant portion
+        preview = content[:500] + "..." if len(content) > 500 else content
+        return f"📄 **From '{filename}':**\n\n```\n{preview}\n```\n\n" \
                f"\n💡 **Try asking:**\n" \
-               f"• What is this document about?\n" \
-               f"• What type of code is this?\n" \
-               f"• Summarize the content\n" \
-               f"• Tell me about [specific word from the document]"
+               f"• 'Summarize this document'\n" \
+               f"• 'What type of code is this?'\n" \
+               f"• 'What does [specific word] mean?'\n" \
+               f"• 'Explain the main purpose'"
