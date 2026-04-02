@@ -24,25 +24,26 @@ class WebSearch:
             return None
             
         try:
-            # FIRST: Check if this is a clarification response
+            logger.info(f"Original query: {query}")
+            
+            # STEP 1: Check if this is a clarification response to a pending question
             clarification_result = cls._check_clarification_response(query)
             if clarification_result:
                 return clarification_result
             
-            # Clean the query - extract the main subject
+            # STEP 2: Extract the main subject
             clean_query = cls._extract_subject(query)
             if not clean_query or len(clean_query) < 3:
                 return None
             
-            logger.info(f"Original query: {query}")
             logger.info(f"Extracted subject: {clean_query}")
             
-            # Check for ambiguous terms
+            # STEP 3: Check for ambiguous terms FIRST (before searching)
             ambiguous_result = cls._check_ambiguity(clean_query, query)
             if ambiguous_result:
                 return ambiguous_result
             
-            # Try Wikipedia directly
+            # STEP 4: If not ambiguous, search Wikipedia
             result = cls._search_wikipedia(clean_query)
             if result:
                 return result
@@ -82,8 +83,8 @@ class WebSearch:
                     del cls._pending_clarifications[query_hash]
                     result = cls._search_wikipedia(selected['search'])
                     if result:
-                        return result
-                    return f"Here's what I found about {selected['name']}: {cls._search_wikipedia(selected['search'])}"
+                        return f"🔍 {result}"
+                    return f"🔍 Here's what I found about {selected['name']}"
             
             # Check if user replied with text matching any option
             for option in options:
@@ -95,8 +96,8 @@ class WebSearch:
                     del cls._pending_clarifications[query_hash]
                     result = cls._search_wikipedia(option['search'])
                     if result:
-                        return result
-                    return f"Here's what I found about {option['name']}: {cls._search_wikipedia(option['search'])}"
+                        return f"🔍 {result}"
+                    return f"🔍 Here's what I found about {option['name']}"
                 
                 # Extract keywords from parentheses like (programming language)
                 paren_match = re.search(r'\(([^)]+)\)', option['name'])
@@ -106,8 +107,8 @@ class WebSearch:
                         del cls._pending_clarifications[query_hash]
                         result = cls._search_wikipedia(option['search'])
                         if result:
-                            return result
-                        return f"Here's what I found about {option['name']}: {cls._search_wikipedia(option['search'])}"
+                            return f"🔍 {result}"
+                        return f"🔍 Here's what I found about {option['name']}"
         
         return None
     
@@ -166,8 +167,9 @@ class WebSearch:
             # Create a hash key from the original query
             query_hash = original_query.lower().strip()
             
-            # Check if we already asked
+            # Check if we already asked about this exact query
             if query_hash in cls._pending_clarifications:
+                # Already waiting for clarification, don't ask again
                 return None
             
             # Store pending clarification
@@ -188,11 +190,10 @@ class WebSearch:
         if not query:
             return ""
             
-        original_query = query
         query_lower = query.lower().strip()
         
         # Remove question mark
-        query = query.replace('?', '').strip()
+        query_clean = query.replace('?', '').strip()
         
         # List of question patterns to remove
         question_patterns = [
@@ -210,24 +211,25 @@ class WebSearch:
         # Remove the question prefix
         for pattern in question_patterns:
             if query_lower.startswith(pattern):
-                query = query[len(pattern):].strip()
+                query_clean = query_clean[len(pattern):].strip()
                 break
         
         # If query is too short, get last word
-        if len(query) < 3:
+        if len(query_clean) < 3:
             words = query_lower.split()
             if words:
-                query = words[-1]
+                query_clean = words[-1]
         
-        # For short ambiguous terms, keep as lowercase for matching
-        if query.lower() in ['python', 'java', 'spring', 'apple', 'amazon', 'windows']:
-            return query.lower()
+        # Return as-is for ambiguous terms (keep lowercase for matching)
+        # This ensures 'python' matches the ambiguous_terms dict key
+        if query_clean.lower() in ['python', 'java', 'spring', 'apple', 'amazon', 'windows', 'table', 'bank', 'cricket']:
+            return query_clean.lower()
         
-        # Capitalize first letter
-        if query and not query[0].isdigit():
-            query = query[0].upper() + query[1:]
+        # Capitalize first letter for everything else
+        if query_clean and not query_clean[0].isdigit():
+            query_clean = query_clean[0].upper() + query_clean[1:]
         
-        return query
+        return query_clean
     
     @classmethod
     def _search_wikipedia(cls, term):
@@ -249,6 +251,12 @@ class WebSearch:
                 data = response.json()
                 if data.get('extract'):
                     extract = cls._clean_extract(data['extract'])
+                    # Check if this is a disambiguation page
+                    if extract.startswith('may refer to') or 'refer to:' in extract[:100]:
+                        logger.info(f"Disambiguation page detected for: {term}")
+                        # Try to find a better page
+                        if term.lower() == 'python':
+                            return cls._search_wikipedia('Python programming language')
                     return extract
             
             # Try search API
