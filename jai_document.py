@@ -8,6 +8,7 @@ import tempfile
 import os
 import re
 import logging
+import requests
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -97,7 +98,7 @@ class DocumentHandler:
             for i, line in enumerate(lines, 1):
                 simplified += f"{i}. {line[:150]}{'...' if len(line) > 150 else ''}\n\n"
         
-        simplified += f"💡 **Now ask me anything about this document!**"
+        simplified += f"💡 **Now ask me anything about this document!** I can also search online for terms you don't understand."
         
         return simplified
     
@@ -124,34 +125,80 @@ class DocumentHandler:
         return client_id in _user_documents
     
     @staticmethod
+    def search_online(term):
+        """Search online for a term using Wikipedia API"""
+        try:
+            # Try Wikipedia
+            encoded_term = term.replace(' ', '_')
+            url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{encoded_term}'
+            response = requests.get(url, timeout=8, headers={'User-Agent': 'JAI-Bot/1.0'})
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('extract'):
+                    extract = data['extract']
+                    # Clean up
+                    extract = re.sub(r'\([^)]*\)', '', extract)
+                    extract = ' '.join(extract.split())
+                    if len(extract) > 50:
+                        return extract
+            
+            # Try DuckDuckGo
+            ddg_url = f'https://api.duckduckgo.com/?q={term}&format=json&no_html=1'
+            ddg_response = requests.get(ddg_url, timeout=8)
+            
+            if ddg_response.status_code == 200:
+                data = ddg_response.json()
+                if data.get('AbstractText'):
+                    return data['AbstractText']
+                elif data.get('Definition'):
+                    return data['Definition']
+            
+            return None
+        except Exception as e:
+            logger.error(f"Online search error: {e}")
+            return None
+    
+    @staticmethod
     def _get_code_explanation(term, content):
-        """Provide intelligent explanations for code-related terms"""
+        """Provide intelligent explanations for code-related terms with online fallback"""
+        
+        # Built-in explanations for common Node.js terms
         explanations = {
-            'fs': "📁 **fs (File System module)** - This is a Node.js built-in module that allows you to work with the file system on your computer. It can read, write, delete, and modify files. Common uses: reading files with `fs.readFile()`, writing files with `fs.writeFile()`, and checking if files exist.",
+            'fs': "📁 **fs (File System module)** - Node.js built-in module for file operations.\n\n**What it can do:**\n• Read files: `fs.readFile()`\n• Write files: `fs.writeFile()`\n• Delete files: `fs.unlink()`\n• Create directories: `fs.mkdir()`\n• Check if files exist\n\n**Common use:** Reading configuration files, saving user data, logging.",
             
-            'http': "🌐 **http module** - This creates web servers in Node.js. It handles incoming HTTP requests (like when someone visits a website) and sends back responses. The code uses it to create a server that listens for requests.",
+            'http': "🌐 **http module** - Node.js module for creating web servers.\n\n**What it does:**\n• Creates HTTP servers with `http.createServer()`\n• Handles incoming requests (GET, POST, etc.)\n• Sends responses back to clients\n\n**Common use:** Building web applications, APIs, and web services.",
             
-            'path': "📂 **path module** - Helps work with file and directory paths. It handles things like joining paths (`path.join()`), getting file extensions, and normalizing paths across different operating systems.",
+            'path': "📂 **path module** - Node.js module for working with file paths.\n\n**What it does:**\n• Joins paths: `path.join()`\n• Gets file extensions: `path.extname()`\n• Normalizes paths across OS\n• Resolves relative paths\n\n**Common use:** Building cross-platform file paths.",
             
-            'cors': "🔓 **CORS (Cross-Origin Resource Sharing)** - This is a security feature that controls which websites can access your server. The code sets `'Access-Control-Allow-Origin': '*'` which allows ANY website to access it - this is a security vulnerability being shown for educational purposes.",
+            'cors': "🔓 **CORS (Cross-Origin Resource Sharing)** - Security feature for web browsers.\n\n**What it controls:**\n• Which websites can access your API\n• What HTTP methods are allowed\n• What headers can be sent\n\n**⚠️ Security note:** Setting `'Access-Control-Allow-Origin': '*'` allows ANY website to access your server - a security vulnerability!",
             
-            'createServer': "🖥️ **createServer()** - This method creates a web server. It takes a callback function that runs every time a request comes in. The request (req) contains information about what the user asked for, and response (res) is what you send back.",
+            'createServer': "🖥️ **createServer()** - Method that creates an HTTP server in Node.js.\n\n**How it works:**\n1. Takes a callback function\n2. Callback runs for every request\n3. Gets `req` (request) and `res` (response) objects\n4. You send back data with `res.end()`\n\n**Example:** `http.createServer((req, res) => { res.end('Hello'); })`",
             
-            'setHeader': "📋 **setHeader()** - Sets HTTP response headers. Headers are metadata sent with responses. Here it's setting CORS headers to control access permissions.",
+            'setHeader': "📋 **setHeader()** - Sets HTTP response headers.\n\n**What headers do:**\n• Control caching behavior\n• Set content type\n• Enable CORS\n• Handle authentication\n\n**Example:** `res.setHeader('Content-Type', 'application/json')`",
             
-            'vulnerable': "⚠️ **Vulnerable server** - This code is intentionally written with security flaws for educational purposes. It shows what NOT to do in production code, like allowing all CORS requests without restrictions."
+            'vulnerable': "⚠️ **Vulnerable server** - Code with intentional security flaws.\n\n**Common vulnerabilities shown:**\n• Permissive CORS (`*` allows all origins)\n• No input validation\n• No authentication\n• SQL injection points\n\n**Purpose:** Educational - learn what NOT to do!",
+            
+            'require': "📦 **require()** - Node.js function to import modules.\n\n**What it does:**\n• Loads built-in modules: `require('fs')`\n• Loads local files: `require('./file.js')`\n• Loads npm packages: `require('express')`\n\n**Returns:** The exported content of the module."
         }
         
         term_lower = term.lower()
-        for key, explanation in explanations.items():
-            if key in term_lower or term_lower in key:
-                return explanation
         
-        return None
+        # Check built-in explanations first
+        for key, explanation in explanations.items():
+            if key == term_lower or (key in term_lower and len(key) > 2):
+                return explanation, True  # Found in built-in
+        
+        # If not found, search online
+        online_result = DocumentHandler.search_online(term)
+        if online_result:
+            return f"🔍 **{term}** (from online search):\n\n{online_result}\n\n💡 This information comes from Wikipedia. For document-specific info, check where it appears in your file.", False
+        
+        return None, False
     
     @staticmethod
     def answer_question(client_id, question):
-        """Intelligently answer ANY question about the document with explanations"""
+        """Intelligently answer ANY question about the document with online fallback"""
         doc = DocumentHandler.get_user_document(client_id)
         if not doc:
             return None
@@ -161,7 +208,7 @@ class DocumentHandler:
         question_lower = question.lower().strip()
         
         # ========== SUMMARY QUESTIONS ==========
-        if any(word in question_lower for word in ['summary', 'summarize', 'overview', 'what is this about', 'tell me about it', 'what does it say', 'gist']):
+        if any(word in question_lower for word in ['summary', 'summarize', 'overview', 'what is this about', 'tell me about it', 'gist']):
             lines = [l.strip() for l in content.split('\n') if l.strip() and len(l.strip()) > 15]
             summary = f"📋 **Summary of '{filename}':**\n\n"
             
@@ -171,84 +218,94 @@ class DocumentHandler:
             else:
                 summary += f"{content[:600]}...\n\n"
             
-            # Add document purpose explanation
             if 'vulnerable' in content.lower():
-                summary += "\n⚠️ **Document Purpose:** This appears to be an educational example showing a vulnerable server. It's meant for learning about security issues like CORS misconfiguration.\n\n"
-            elif 'http' in content.lower() and 'server' in content.lower():
-                summary += "\n💡 **What this is:** A Node.js HTTP server example. It demonstrates how to create a basic web server.\n\n"
+                summary += "\n⚠️ **Purpose:** Educational example showing server vulnerabilities.\n\n"
+            elif 'http' in content.lower():
+                summary += "\n💡 **Purpose:** Node.js HTTP server example.\n\n"
             
-            summary += f"💡 Ask me specific questions like 'What does fs do?' or 'Explain the CORS settings'"
+            summary += f"💡 Ask me: 'What does fs do?' or 'Explain the code'"
             return summary
         
         # ========== EXPLANATION QUESTIONS (What does X do/mean) ==========
         explain_match = re.search(r'what does (?:the |this |that )?([a-zA-Z0-9_]+) (?:do|mean)', question_lower)
         if not explain_match:
             explain_match = re.search(r'explain (?:the |this |that )?([a-zA-Z0-9_]+)', question_lower)
+        if not explain_match:
+            explain_match = re.search(r'what is (?:the |a |an )?([a-zA-Z0-9_]+)', question_lower)
         
         if explain_match:
             term = explain_match.group(1).strip()
             
-            # First check if we have a pre-defined explanation
-            explanation = DocumentHandler._get_code_explanation(term, content)
-            if explanation:
-                # Also show where it appears in the document
-                lines = content.split('\n')
-                context_line = None
-                for line in lines:
-                    if term in line.lower() and len(line.strip()) > 10:
-                        context_line = line.strip()
-                        break
-                
-                result = f"{explanation}\n\n"
-                if context_line:
-                    result += f"**Where it appears in your document:**\n```\n{context_line}\n```\n"
-                result += "\n💡 Need more details? Ask me about another term!"
-                return result
+            # First check if term exists in document
+            term_in_doc = term in content.lower()
             
-            # If no pre-defined explanation, search document
+            # Get explanation (built-in or online)
+            explanation, is_builtin = DocumentHandler._get_code_explanation(term, content)
+            
+            # Find where it appears in document
             lines = content.split('\n')
+            context_line = None
             for line in lines:
-                if term in line.lower():
-                    return f"📖 **About '{term}':**\n\n```\n{line.strip()}\n```\n\n**Explanation:** This appears in your document as shown above. Would you like me to explain a specific part in more detail?"
+                if term in line.lower() and len(line.strip()) > 10:
+                    context_line = line.strip()
+                    break
+            
+            result = ""
+            
+            if explanation:
+                result = f"{explanation}\n\n"
+            else:
+                result = f"📖 **About '{term}':**\n\n"
+            
+            if context_line and term_in_doc:
+                result += f"**Where it appears in your document:**\n```\n{context_line}\n```\n\n"
+            elif not is_builtin and not context_line:
+                result += f"💡 I couldn't find '{term}' in your document, but here's what I found online.\n\n"
+            
+            result += "\n💡 Need more details? Ask about another term!"
+            return result
         
         # ========== WHAT DOES IT DO? (Contextual) ==========
-        if question_lower == 'what does it do' or question_lower == 'what is it':
-            # Analyze document purpose
+        if question_lower in ['what does it do', 'what is this', 'what is it']:
             if 'vulnerable' in content.lower():
-                return "📖 **This document shows a vulnerable Node.js server** designed for educational hacking.\n\n**What it does:**\n• Creates an HTTP server using Node.js\n• Has intentional security vulnerabilities (like permissive CORS)\n• Is meant to teach about security flaws\n\n**Key components:**\n• Uses `http`, `fs`, and `path` modules\n• Stores data in memory arrays\n• Has CORS set to allow all origins (`*`)\n\n⚠️ This code is intentionally insecure for learning purposes."
+                return "📖 **This is a vulnerable Node.js server** for educational hacking.\n\n" \
+                       "**What it does:**\n" \
+                       "• Creates an HTTP server with `http.createServer()`\n" \
+                       "• Has intentional security vulnerabilities\n" \
+                       "• Uses CORS with `'*'` (allows all origins - insecure!)\n" \
+                       "• Stores data in memory arrays\n\n" \
+                       "⚠️ **Purpose:** Teaching about web security vulnerabilities.\n\n" \
+                       "Ask me: 'What does fs do?' or 'Explain CORS'"
             
-            elif 'http' in content.lower() and 'server' in content.lower():
-                return "📖 **This is a Node.js HTTP server example.**\n\n**What it does:**\n• Creates a web server that listens for requests\n• Handles incoming HTTP requests\n• Sends back responses\n\n**Common uses:**\n• Building web applications\n• Creating APIs\n• Serving static files"
+            elif 'http' in content.lower():
+                return "📖 **This is a Node.js HTTP server example.**\n\n" \
+                       "**What it does:**\n" \
+                       "• Creates a web server that listens for requests\n" \
+                       "• Handles HTTP requests and sends responses\n" \
+                       "• Uses Node.js built-in modules\n\n" \
+                       "Ask me to explain specific parts like 'What does createServer do?'"
             
-            else:
-                return "📖 **This document contains code/text content.**\n\nAsk me:\n• 'What type of code is this?'\n• 'Summarize the document'\n• 'What does [specific term] do?'"
+            return "📖 **This document contains code/text content.**\n\nAsk me specific questions like:\n• 'What type of code is this?'\n• 'What does fs do?'\n• 'Summarize the document'"
         
         # ========== CODE TYPE QUESTIONS ==========
         if any(word in question_lower for word in ['what type', 'what language', 'what code', 'programming language']):
             if 'const' in content or 'let' in content or 'var' in content:
-                if 'http' in content or 'server' in content:
-                    return "💻 **This is Node.js/JavaScript code!**\n\n" \
-                           "**What this code does:**\n" \
-                           "• Creates an HTTP web server\n" \
-                           "• Uses Node.js built-in modules (http, fs, path)\n" \
-                           "• Handles incoming requests and sends responses\n\n" \
-                           "**Key features:**\n" \
-                           "• `http.createServer()` - Creates the server\n" \
-                           "• `req` and `res` - Request and response objects\n" \
-                           "• CORS headers for cross-origin requests\n\n" \
-                           "Want me to explain any specific part?"
-            elif 'def ' in content or 'import ' in content:
-                return "🐍 **This is Python code!**\n\nWould you like me to explain what it does?"
-            else:
-                return "📄 **This appears to be a code/text file.**\n\nWhat specific information are you looking for?"
+                return "💻 **This is Node.js/JavaScript code!**\n\n" \
+                       "**What this code does:**\n" \
+                       "• Creates an HTTP web server\n" \
+                       "• Uses Node.js built-in modules (http, fs, path)\n" \
+                       "• Handles incoming requests\n\n" \
+                       "**Want to understand specific parts?** Ask:\n" \
+                       "• 'What does fs do?'\n" \
+                       "• 'Explain http.createServer'\n" \
+                       "• 'What is CORS?'"
         
-        # ========== SPECIFIC TERM SEARCH (with explanation) ==========
-        # Extract keywords from question
+        # ========== SPECIFIC TERM SEARCH ==========
         keywords = re.findall(r'\b[a-zA-Z]{3,}\b', question_lower)
-        stopwords = {'what', 'does', 'this', 'that', 'tell', 'about', 'from', 'with', 'have', 'were', 'there', 'their', 'they', 'will', 'would', 'could', 'should', 'type', 'code', 'language', 'file', 'document', 'please', 'help', 'know', 'want', 'need', 'can', 'you', 'the', 'and', 'for', 'are', 'not'}
+        stopwords = {'what', 'does', 'this', 'that', 'tell', 'about', 'from', 'with', 'have', 'were', 'there', 'their', 'they', 'will', 'would', 'could', 'should', 'type', 'code', 'language', 'file', 'document', 'please', 'help', 'know', 'want', 'need', 'can', 'you', 'the', 'and', 'for', 'are', 'not', 'explain', 'mean', 'meaning'}
         keywords = [k for k in keywords if k not in stopwords]
         
-        # Search for each keyword
+        # Search for keywords in document
         lines = content.split('\n')
         found_lines = []
         for keyword in keywords[:3]:
@@ -260,21 +317,19 @@ class DocumentHandler:
         if found_lines:
             response = f"📖 **Found in your document:**\n\n"
             for keyword, line in found_lines:
-                # Check if we have an explanation for this keyword
-                explanation = DocumentHandler._get_code_explanation(keyword, content)
+                explanation, _ = DocumentHandler._get_code_explanation(keyword, content)
                 if explanation:
                     response += f"**{keyword}:** {explanation}\n\n"
                 else:
                     response += f"**{keyword}:**\n```\n{line}\n```\n\n"
-            response += "💡 Need more details? Ask 'What does [term] do?'"
+            response += "💡 Ask 'What does [term] do?' for more details!"
             return response
         
-        # ========== FALLBACK ==========
-        preview = content[:500] + "..." if len(content) > 500 else content
+        # ========== FALLBACK WITH ONLINE SEARCH ==========
+        preview = content[:400] + "..." if len(content) > 400 else content
         return f"📄 **From '{filename}':**\n\n```\n{preview}\n```\n\n" \
                f"\n💡 **Try asking:**\n" \
                f"• 'Summarize this document'\n" \
                f"• 'What type of code is this?'\n" \
-               f"• 'What does fs do?'\n" \
-               f"• 'Explain the CORS settings'\n" \
-               f"• 'What is this server for?'"
+               f"• 'What does fs do?' (I can search online!)\n" \
+               f"• 'Explain http.createServer'"
