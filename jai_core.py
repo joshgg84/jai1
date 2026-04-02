@@ -34,21 +34,28 @@ class JAIPersonality:
             JAIMemory.save_conversation(client_id, message, weather_response)
             return weather_response
         
-        # ========== STEP 2: WEB SEARCH (BEFORE ANYTHING ELSE) ==========
-        if WebSearch.should_search(message):
+        # ========== STEP 2: WEB SEARCH (FOR QUESTIONS) ==========
+        # Check if message is a question that needs searching
+        is_question = message.strip().endswith('?')
+        has_question_word = any(word in msg for word in ['who', 'what', 'where', 'when', 'why', 'how'])
+        
+        if is_question or has_question_word:
+            logger.info(f"Question detected: {message}")
             search_result = WebSearch.search_online(message)
+            
             if search_result:
-                # Truncate if too long
-                if len(search_result) > 600:
-                    search_result = search_result[:600] + "..."
-                
+                logger.info(f"Search successful, returning result")
                 response = f"🔍 {search_result}"
                 JAIMemory.save_conversation(client_id, message, response)
                 return response
+            else:
+                # If search fails, return a helpful message instead of slang
+                logger.info(f"Search failed for: {message}")
+                return "I couldn't find that information online. Could you rephrase your question or ask me something else? I can also learn if you teach me!"
         
-        # ========== STEP 3: MEMORY ==========
+        # ========== STEP 3: CHECK MEMORY ==========
         
-        # Check next time say patterns
+        # Check for "next time say" patterns
         next_time_response = JAIMemory.get_next_time_say_response(client_id, message)
         if next_time_response:
             return next_time_response
@@ -58,110 +65,193 @@ class JAIPersonality:
         if taught_response:
             return taught_response
         
-        # Extract user facts
+        # Extract and save user facts
         learned_facts = JAIMemory.extract_and_save_user_fact(client_id, message)
         if learned_facts:
             for fact_key, fact_value in learned_facts:
                 if fact_key == "name":
                     return f"Nice to meet you, {fact_value}! I'll remember that. 😊"
                 elif fact_key == "age":
-                    return f"Got it! You're {fact_value} years old!"
+                    return f"Got it! You're {fact_value} years old. That's awesome!"
                 elif fact_key == "location":
-                    return f"Cool! {fact_value} is a great place!"
+                    return f"Cool! {fact_value} is a great place. What's it like there?"
         
-        # Get user facts
+        # Get user facts for personalization
         user_facts = JAIMemory.get_user_facts(client_id)
         user_name = user_facts.get("name", None)
         
-        # ========== STEP 4: LEARNING PATTERNS ==========
+        # ========== STEP 4: CHECK FOR LEARNING PATTERNS ==========
         
-        # Next time say teaching
-        next_time_pattern = re.search(r'next time .+? say[s]? ["\']?(.+?)["\']?\s+(?:say|respond with) ["\']?(.+?)["\']?', msg, re.IGNORECASE)
+        # Check for "next time say" teaching pattern
+        next_time_pattern = re.search(r'next time (?:someone|they|you) (?:say|asks?) ["\']?(.+?)["\']?\s*(?:say|respond with|tell them) ["\']?(.+?)["\']?', msg, re.IGNORECASE)
+        if not next_time_pattern:
+            next_time_pattern = re.search(r'when (?:someone|they|you) (?:says|asks?) ["\']?(.+?)["\']?,\s*(?:say|respond with|tell them) ["\']?(.+?)["\']?', msg, re.IGNORECASE)
+        
         if next_time_pattern:
             trigger = next_time_pattern.group(1).strip()
             response = next_time_pattern.group(2).strip()
-            JAIMemory.learn_next_time_say(client_id, trigger, response)
-            return f"📚 Got it! Next time someone says '{trigger}', I'll respond with '{response}'"
+            success = JAIMemory.learn_next_time_say(client_id, trigger, response)
+            if success:
+                return f"📚 Got it! Next time someone says '{trigger}', I'll respond with '{response}'. Thanks for teaching me!"
+            else:
+                return "📚 Thanks for the suggestion! I'll try to remember that."
         
-        # Direct teaching
-        teach_pattern = re.search(r'teach ["\']?(.+?)["\']?\s*->\s*["\']?(.+?)["\']?', msg, re.IGNORECASE)
+        # Check for direct teaching pattern
+        teach_pattern = re.search(r'(teach|learn)\s+["\']?(.+?)["\']?\s*->\s*["\']?(.+?)["\']?', msg, re.IGNORECASE)
         if teach_pattern:
-            trigger = teach_pattern.group(1).strip()
-            response = teach_pattern.group(2).strip()
-            JAIMemory.teach_response(client_id, trigger, response)
-            return f"✅ Learned! When you say '{trigger}', I'll respond with '{response}'"
+            trigger = teach_pattern.group(2).strip()
+            response = teach_pattern.group(3).strip()
+            success, message_result = JAIMemory.teach_response(client_id, trigger, response)
+            if success:
+                return f"✅ I learned that! When you say '{trigger}', I'll respond with '{response}'"
+            else:
+                return f"❌ Sorry, I couldn't learn that. Error: {message_result}"
         
-        # ========== STEP 5: GREETINGS & BASIC CONVERSATION ==========
-        
-        # Time greetings
-        if "good morning" in msg or "morning" in msg:
-            return f"Good morning{', ' + user_name if user_name else ''}! 🌅 Hope you slept well!"
-        
-        if "good afternoon" in msg or "afternoon" in msg:
-            return f"Good afternoon{', ' + user_name if user_name else ''}! 🌞 How's your day?"
-        
-        if "good evening" in msg or "evening" in msg:
-            return f"Good evening{', ' + user_name if user_name else ''}! 🌙 Hope you had a productive day!"
-        
-        # Basic greetings
-        if any(g in msg for g in ["hi", "hello", "hey"]):
+        # ========== STEP 5: TIME GREETINGS ==========
+        if any(g in msg for g in ["good morning", "morning"]):
+            greeting = "Good morning! 🌅 Hope you slept well. What is on your agenda today?"
             if user_name:
-                return f"Hello {user_name}! 😊 How can I help you today?"
-            return "Hello! 😊 How can I help you today?"
+                greeting = f"Good morning, {user_name}! 🌅 Hope you slept well. What's on your agenda today?"
+            return greeting
         
-        # How are you
-        if any(h in msg for h in ["how are you", "how you doing"]):
-            return "I'm doing great! Thanks for asking. How about you?"
+        if any(g in msg for g in ["good afternoon", "afternoon"]):
+            greeting = "Good afternoon! 🌞 How is your day treating you?"
+            if user_name:
+                greeting = f"Good afternoon, {user_name}! 🌞 How's your day treating you?"
+            return greeting
         
-        # Thanks
-        if any(t in msg for t in ["thank", "thanks"]):
-            return "You're welcome! 😊 Happy to help!"
+        if any(g in msg for g in ["good evening", "evening"]):
+            greeting = "Good evening! 🌙 Hope you had a productive day."
+            if user_name:
+                greeting = f"Good evening, {user_name}! 🌙 Hope you had a productive day."
+            return greeting
         
-        # Goodbye
-        if any(g in msg for g in ["bye", "goodbye", "see you"]):
-            return "Goodbye! Take care! 👋"
+        if any(g in msg for g in ["good night", "night"]):
+            return "Good night! 🌙 Rest well. Tomorrow is another chance."
         
-        # Creator
-        if any(c in msg for c in ["who made you", "who created you"]):
-            return "I was created by Joshua Giwa from Yukuben Village, Nigeria! 🇳🇬"
+        # ========== STEP 6: BASIC GREETINGS ==========
+        if any(g in msg for g in ["hi", "hello", "hey", "howdy", "sup"]):
+            if user_name:
+                return random.choice([
+                    f"Hello {user_name}! 😊 How can I help you today?",
+                    f"Hey {user_name}! What's good?",
+                    f"Hi {user_name}! Ready to chat?"
+                ])
+            return random.choice([
+                "Hello! 😊 How can I help you today?",
+                "Hey there! What's good?",
+                "Hi! Ready to chat?"
+            ])
         
-        # Capabilities
-        if any(c in msg for c in ["what can you do", "your skills"]):
-            return "I can: search online 🔍, check weather 🌤️, convert currency 💰, calculate math 🧮, and remember what you teach me!"
+        # ========== STEP 7: HOW ARE YOU? ==========
+        if any(h in msg for h in ["how are you", "how you doing", "how is it going", "how are you doing"]):
+            responses = [
+                "I am doing great! Thanks for asking. How about you?",
+                "I am good, just vibing. What about you?",
+                "Doing well! What is new with you today?",
+                "I am here! More importantly, how are YOU doing?"
+            ]
+            if user_name:
+                responses = [
+                    f"I'm doing great, {user_name}! Thanks for asking. How about you?",
+                    f"Doing well, {user_name}! What's new with you today?"
+                ]
+            return random.choice(responses)
         
-        # ========== STEP 6: CURRENCY ==========
+        # ========== STEP 8: FOLLOW-UP RESPONSES ==========
+        if any(f in msg for f in ["i am fine", "i am good", "doing good", "doing well", "i am alright"]):
+            if any(q in msg for q in ["what about you", "how about you", "and you", "u?", "you?"]):
+                return random.choice([
+                    "I am doing great, thanks for asking! 😊 What has been the highlight of your day so far?",
+                    "I am good! Just been here, ready to chat. What is new with you?",
+                    "I am doing well! Thanks for checking. What is on your mind today?",
+                    "I am alright — better now that you asked. So what is happening in your world?"
+                ])
+            else:
+                return random.choice([
+                    "Glad to hear that! 😊 What has been going well?",
+                    "That is good! Anything exciting happening today?",
+                    "Happy to hear that. What are you up to?"
+                ])
+        
+        # ========== STEP 9: THANKS ==========
+        if any(t in msg for t in ["thank", "thanks", "thx"]):
+            return random.choice([
+                "You're welcome! 😊 Happy to help.",
+                "Anytime! That's what I'm here for.",
+                "My pleasure!"
+            ])
+        
+        # ========== STEP 10: GOODBYE ==========
+        if any(g in msg for g in ["bye", "goodbye", "see you", "later"]):
+            return random.choice([
+                "Goodbye! Take care! 👋",
+                "See you later! Come back anytime.",
+                "Peace! Have a great day!"
+            ])
+        
+        # ========== STEP 11: CREATOR ==========
+        if any(c in msg for c in ["who made you", "who created you", "your creator"]):
+            return "I was created by Joshua Giwa from Yukuben Village, Nigeria! 🇳🇬 He built me to be a helpful companion that learns from every conversation."
+        
+        # ========== STEP 12: CAPABILITIES ==========
+        if any(c in msg for c in ["what can you do", "your skills", "help with"]):
+            return "I can chat with you, do calculations 💰, convert currencies with live rates, check weather 🌤️, search online 🔍, and most importantly - I LEARN! \n\nYou can:\n• Teach me: 'teach hello -> Hi there!'\n• Next time say: 'next time someone says hello say Hey!'\n• Share your name, age, or location"
+        
+        # ========== STEP 13: CURRENCY CONVERSION ==========
         currency_result = JAICurrency.detect_and_convert(message)
         if currency_result:
             return currency_result
         
-        # ========== STEP 7: CALCULATIONS ==========
-        if Calculator.should_calculate(message):
-            calc_result = Calculator.calculate(message)
-            if calc_result:
-                return calc_result
+        # ========== STEP 14: CALCULATIONS ==========
+        if any(op in msg for op in ["+", "-", "*", "/", "%", "calculate", "what is"]):
+            # Extract numbers for calculation
+            numbers = re.findall(r'\d+', message)
+            if len(numbers) >= 2:
+                calc_result = Calculator.calculate(message)
+                if calc_result:
+                    return calc_result
         
-        # ========== STEP 8: TIME & DATE ==========
+        # ========== STEP 15: TIME & DATE ==========
         if "time" in msg:
             return TimeService.get_time()
+        
         if "date" in msg:
             return TimeService.get_date()
         
-        # ========== STEP 9: JOKES ==========
-        if any(j in msg for j in ["joke", "funny"]):
+        # ========== STEP 16: JOKES ==========
+        if any(j in msg for j in ["joke", "funny", "make me laugh"]):
             jokes = [
                 "Why don't scientists trust atoms? Because they make up everything! 😄",
                 "What do you call a fake noodle? An impasta! 🍝",
-                "Why did the scarecrow win an award? He was outstanding in his field! 🌾"
+                "Why did the scarecrow win an award? He was outstanding in his field! 🌾",
+                "Why do programmers prefer dark mode? Because light attracts bugs! 🐛",
+                "What do you call a Nigerian who knows cyber security? A Nai-ja breaker! 😂"
             ]
             return random.choice(jokes)
         
-        # ========== STEP 10: INTENT RESPONSES ==========
+        # ========== STEP 17: MOTIVATION ==========
+        if any(m in msg for m in ["motivate me", "inspire me", "give me motivation"]):
+            return JAIGrammarLong.build_long_motivation()
+        
+        # ========== STEP 18: USE JAIINTENT ==========
         intent = JAINLP.extract_intent(message)
         intent_response = JAIIntent.get_response(intent)
         if intent_response:
             return intent_response
         
-        # ========== STEP 11: CASUAL RESPONSES ==========
+        # ========== STEP 19: SENTIMENT ANALYSIS ==========
+        analysis = JAINLP.analyze_sentence(message)
+        if analysis and analysis['sentiment']['emotion'] in ['positive', 'negative']:
+            polarity = analysis['sentiment']['polarity']
+            
+            if polarity > 0.6:
+                return "Wow! That energy is contagious! 🎉 Tell me everything — I want to celebrate with you!"
+            
+            if polarity < -0.6:
+                return "That sounds really heavy. I am here with you. Want to talk it through? No pressure."
+        
+        # ========== STEP 20: CASUAL RESPONSES (NO NIGERIAN SLANG) ==========
         casual = JAICasual.get_casual_response(message)
         if casual:
             return casual
@@ -174,18 +264,23 @@ class JAIPersonality:
         if conv:
             return conv
         
-        # ========== STEP 12: DEFAULT (NO SLANG FALLBACK) ==========
+        # ========== STEP 21: DEFAULT FALLBACK (CLEAN ENGLISH) ==========
         fallbacks = [
             "That's interesting. Tell me more!",
             "I hear you. What else is on your mind?",
             "Go on, I'm listening.",
-            "How does that make you feel?"
+            "How does that make you feel?",
+            "That's a good point. What do you think?",
+            "I'm here for you. What would you like to talk about?"
         ]
         
+        # Personalize fallback if we know user's name
         if user_name:
-            fallbacks = [
+            personalized_fallbacks = [
                 f"What's on your mind, {user_name}?",
-                f"Tell me more about that, {user_name}."
+                f"Tell me more about that, {user_name}.",
+                f"How are you feeling about that, {user_name}?"
             ]
+            fallbacks.extend(personalized_fallbacks)
         
         return random.choice(fallbacks)
