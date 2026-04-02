@@ -57,77 +57,59 @@ class WebSearch:
             if not search_term or len(search_term) < 2:
                 return None
             
-            # First try to get the page directly
-            page_title = search_term.replace(' ', '_')
-            url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{page_title}'
-            logger.info(f"Trying direct Wikipedia: {url}")
-            
-            response = requests.get(url, timeout=10, headers={'User-Agent': 'JAI-Bot/1.0'})
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('extract'):
-                    extract = data['extract']
-                    # Clean up the extract
-                    extract = re.sub(r'\([^)]*\)', '', extract)
-                    extract = ' '.join(extract.split())
-                    if len(extract) > 50:
-                        logger.info(f"Found Wikipedia page for: {search_term}")
-                        return extract
-            
-            # If direct page fails, try search API
-            search_url = f'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={search_term}&format=json'
-            logger.info(f"Trying Wikipedia search: {search_url}")
-            
-            search_response = requests.get(search_url, timeout=10, headers={'User-Agent': 'JAI-Bot/1.0'})
-            
-            if search_response.status_code == 200:
-                search_data = search_response.json()
-                if search_data.get('query', {}).get('search'):
-                    # Get the first search result title
-                    first_result = search_data['query']['search'][0]['title']
-                    logger.info(f"Search found: {first_result}")
-                    
-                    # Fetch that page
-                    page_title = first_result.replace(' ', '_')
-                    page_url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{page_title}'
-                    page_response = requests.get(page_url, timeout=10)
-                    
-                    if page_response.status_code == 200:
-                        page_data = page_response.json()
-                        if page_data.get('extract'):
-                            extract = page_data['extract']
-                            extract = re.sub(r'\([^)]*\)', '', extract)
-                            extract = ' '.join(extract.split())
-                            if len(extract) > 50:
-                                logger.info(f"Found page via search: {first_result}")
-                                return extract
-            
             # Special handling for common ambiguous terms
             special_cases = {
                 'python': 'Python (programming language)',
                 'java': 'Java (programming language)',
-                'c++': 'C++',
                 'javascript': 'JavaScript',
                 'html': 'HTML',
-                'css': 'CSS'
+                'css': 'CSS',
+                'c++': 'C++',
+                'c#': 'C Sharp (programming language)'
             }
             
             search_term_lower = search_term.lower()
+            page_title = None
+            
+            # Check special cases first
             if search_term_lower in special_cases:
-                special_title = special_cases[search_term_lower].replace(' ', '_')
-                special_url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{special_title}'
-                special_response = requests.get(special_url, timeout=10)
+                page_title = special_cases[search_term_lower]
+                logger.info(f"Using special case: {page_title}")
+            else:
+                # Try search API to find the best match
+                search_url = f'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={search_term}&format=json'
+                logger.info(f"Searching Wikipedia: {search_url}")
                 
-                if special_response.status_code == 200:
-                    special_data = special_response.json()
-                    if special_data.get('extract'):
-                        extract = special_data['extract']
-                        extract = re.sub(r'\([^)]*\)', '', extract)
-                        extract = ' '.join(extract.split())
-                        if len(extract) > 50:
-                            logger.info(f"Found via special case: {special_title}")
-                            return extract
+                search_response = requests.get(search_url, timeout=10, headers={'User-Agent': 'JAI-Bot/1.0'})
+                
+                if search_response.status_code == 200:
+                    search_data = search_response.json()
+                    if search_data.get('query', {}).get('search'):
+                        # Get the first search result title
+                        page_title = search_data['query']['search'][0]['title']
+                        logger.info(f"Search found: {page_title}")
+            
+            if not page_title:
+                # Try direct page access
+                page_title = search_term
+            
+            # Now fetch the page
+            encoded_title = page_title.replace(' ', '_')
+            page_url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{encoded_title}'
+            logger.info(f"Fetching page: {page_url}")
+            
+            page_response = requests.get(page_url, timeout=10, headers={'User-Agent': 'JAI-Bot/1.0'})
+            
+            if page_response.status_code == 200:
+                page_data = page_response.json()
+                if page_data.get('extract'):
+                    extract = page_data['extract']
+                    # Clean up the extract
+                    extract = re.sub(r'\([^)]*\)', '', extract)
+                    extract = ' '.join(extract.split())
+                    if len(extract) > 50:
+                        logger.info(f"Successfully fetched page: {page_title}")
+                        return extract
             
             return None
                 
