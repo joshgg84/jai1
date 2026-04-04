@@ -59,8 +59,29 @@ class JAIPersonality:
                 logger.error(f"Document upload error: {e}")
                 return f"❌ Error: {str(e)}"
         
-        # ========== CHECK FOR GENERAL KNOWLEDGE QUESTIONS (ALWAYS SEARCH FIRST) ==========
-        # These patterns should ALWAYS trigger web search
+        # ========== DOCUMENT INTELLIGENCE (HIGHEST PRIORITY - MOVED TO TOP) ==========
+        # This MUST come before currency, calculations, and general knowledge
+        if DocumentHandler.has_document(client_id):
+            doc = DocumentHandler.get_user_document(client_id)
+            if doc:
+                # Check if this is a document-related question or just sending document content
+                # If message is very long (>200 chars) or contains document keywords, treat as doc request
+                doc_keywords = ['document', 'summarize', 'simplify', 'explain', 'what does', 
+                               'what is', 'code', 'function', 'fs', 'http', 'const', 'let']
+                
+                is_likely_doc_question = (
+                    len(original_message) > 100 or  # Long messages are likely document content
+                    any(keyword in msg for keyword in doc_keywords) or
+                    original_message.strip().endswith('?')
+                )
+                
+                if is_likely_doc_question:
+                    doc_answer = DocumentHandler.answer_question(client_id, original_message)
+                    if doc_answer and not doc_answer.startswith("🔍"):
+                        JAIMemory.save_conversation(client_id, original_message, doc_answer)
+                        return doc_answer
+        
+        # ========== CHECK FOR GENERAL KNOWLEDGE QUESTIONS ==========
         general_knowledge_patterns = [
             r'who created', r'who founded', r'who invented', r'who discovered',
             r'who is', r'who was', r'who are',
@@ -80,12 +101,10 @@ class JAIPersonality:
                 logger.info(f"General knowledge detected: {pattern}")
                 break
         
-        # Also check if message ends with question mark
         if original_message.strip().endswith('?'):
             is_general_knowledge = True
             logger.info("General knowledge detected: question mark")
         
-        # GENERAL KNOWLEDGE - SEARCH ONLINE FIRST
         if is_general_knowledge:
             logger.info(f"Searching online for: {original_message}")
             search_result = WebSearch.search_online(original_message)
@@ -98,16 +117,6 @@ class JAIPersonality:
         if weather_response:
             JAIMemory.save_conversation(client_id, original_message, weather_response)
             return weather_response
-        
-        # ========== DOCUMENT INTELLIGENCE (if document loaded) ==========
-        if DocumentHandler.has_document(client_id):
-            doc = DocumentHandler.get_user_document(client_id)
-            if doc:
-                # Answer from document
-                doc_answer = DocumentHandler.answer_question(client_id, original_message)
-                if doc_answer and not doc_answer.startswith("🔍"):
-                    JAIMemory.save_conversation(client_id, original_message, doc_answer)
-                    return doc_answer
         
         # ========== CALCULATIONS ==========
         percent_match = re.search(r'(\d+)\s*percent\s*of\s*(\d+)', msg)
@@ -123,7 +132,7 @@ class JAIPersonality:
             if calc_result:
                 return calc_result
         
-        # ========== CURRENCY CONVERSION ==========
+        # ========== CURRENCY CONVERSION (LOWER PRIORITY) ==========
         currency_result = JAICurrency.detect_and_convert(original_message)
         if currency_result:
             return currency_result
