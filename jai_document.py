@@ -189,7 +189,7 @@ class DocumentHandler:
         
         # Extract keywords from question
         keywords = re.findall(r'\b[a-zA-Z]{3,}\b', question_lower)
-        stopwords = {'what', 'does', 'this', 'that', 'tell', 'about', 'from', 'with', 'have', 'were', 'there', 'their', 'they', 'will', 'would', 'could', 'should', 'type', 'code', 'language', 'file', 'document', 'please', 'help', 'know', 'want', 'need', 'can', 'you', 'the', 'and', 'for', 'are', 'not', 'explain', 'mean', 'meaning', 'how', 'why', 'when', 'where', 'who'}
+        stopwords = {'what', 'does', 'this', 'that', 'tell', 'about', 'from', 'with', 'have', 'were', 'there', 'their', 'they', 'will', 'would', 'could', 'should', 'type', 'code', 'language', 'file', 'document', 'please', 'help', 'know', 'want', 'need', 'can', 'you', 'the', 'and', 'for', 'are', 'not', 'explain', 'mean', 'meaning', 'how', 'why', 'when', 'where', 'who', 'summarize', 'summary'}
         keywords = [k for k in keywords if k not in stopwords]
         
         # Check if keywords appear in document
@@ -234,15 +234,6 @@ class DocumentHandler:
         """Answer question - routes to document or online search"""
         doc = DocumentHandler.get_user_document(client_id)
         
-        # Check if this is general knowledge (not document-related)
-        if DocumentHandler.is_general_knowledge_question(question):
-            # Search online for answer
-            search_result = DocumentHandler.search_online(question)
-            if search_result:
-                return f"🔍 **I searched online:**\n\n{search_result}"
-            else:
-                return f"🔍 I couldn't find information about that. Try rephrasing your question."
-        
         # If no document is loaded, search online
         if not doc:
             search_result = DocumentHandler.search_online(question)
@@ -254,9 +245,41 @@ class DocumentHandler:
         filename = doc['filename']
         question_lower = question.lower().strip()
         
+        # ========== EXPLICIT SUMMARY COMMAND - HIGHEST PRIORITY ==========
+        if any(word in question_lower for word in ['summarize', 'summary', 'gist', 'overview', 'what is this about', 'tell me about it']):
+            lines = [l.strip() for l in content.split('\n') if l.strip() and len(l.strip()) > 10][:10]
+            summary = f"📋 **Summary of '{filename}':**\n\n"
+            
+            if lines:
+                for i, line in enumerate(lines[:8], 1):
+                    # Truncate long lines
+                    display_line = line[:200] + '...' if len(line) > 200 else line
+                    summary += f"{i}. {display_line}\n\n"
+            else:
+                # If no line breaks, just show first 600 chars
+                summary += f"{content[:600]}...\n\n"
+            
+            # Add document stats
+            summary += f"📊 **Document stats:** {len(content)} characters, {len(content.split())} words\n\n"
+            
+            # Add helpful hints based on content type
+            if 'const' in content or 'let' in content or 'function' in content:
+                summary += f"💡 **This appears to be code.** Try asking: 'What does fs do?' or 'Explain the http module'"
+            else:
+                summary += f"💡 **Ask me questions about this document!**"
+            
+            return summary
+        
+        # Check if this is general knowledge (not document-related)
+        if DocumentHandler.is_general_knowledge_question(question):
+            search_result = DocumentHandler.search_online(question)
+            if search_result:
+                return f"🔍 **I searched online:**\n\n{search_result}\n\n💡 Your document is about code. Ask me about `fs`, `http`, or 'what does this code do'?"
+            else:
+                return f"🔍 I couldn't find information about that. Your document contains code. Try asking about `fs`, `http`, or 'summarize this document'."
+        
         # Check if question is document-specific
         if not DocumentHandler.is_document_specific_question(question, content):
-            # Not about document - search online
             search_result = DocumentHandler.search_online(question)
             if search_result:
                 return f"🔍 **That's not in your document, so I searched online:**\n\n{search_result}\n\n💡 Your document is about code. Ask me about `fs`, `http`, or 'what does this code do'?"
@@ -264,23 +287,6 @@ class DocumentHandler:
                 return f"🔍 I couldn't find information about that. Your document contains code. Try asking about `fs`, `http`, or 'summarize this document'."
         
         # ========== ANSWER FROM DOCUMENT ==========
-        
-        # Summary questions
-        if any(word in question_lower for word in ['summary', 'summarize', 'overview', 'what is this about', 'tell me about it', 'gist']):
-            lines = [l.strip() for l in content.split('\n') if l.strip() and len(l.strip()) > 15]
-            summary = f"📋 **Summary of '{filename}':**\n\n"
-            
-            if lines:
-                for i, line in enumerate(lines[:8], 1):
-                    summary += f"{i}. {line[:200]}{'...' if len(line) > 200 else ''}\n\n"
-            else:
-                summary += f"{content[:600]}...\n\n"
-            
-            if 'vulnerable' in content.lower():
-                summary += "\n⚠️ **Purpose:** Educational example showing server vulnerabilities.\n\n"
-            
-            summary += f"💡 Ask me: 'What does fs do?' or 'Explain the code'"
-            return summary
         
         # Explanation questions
         explain_match = re.search(r'what does (?:the |this |that )?([a-zA-Z0-9_]+) (?:do|mean)', question_lower)
@@ -305,18 +311,18 @@ class DocumentHandler:
             if explanation:
                 result = f"{explanation}\n\n"
                 if context_line:
-                    result += f"**Where it appears in your document:**\n```\n{context_line}\n```\n"
+                    result += f"**Where it appears in your document:**\n```\n{context_line[:200]}\n```\n"
                 return result
             elif context_line:
-                return f"📖 **About '{term}':**\n\n```\n{context_line}\n```\n\nThis appears in your document. Want me to search online for more info?"
+                return f"📖 **About '{term}':**\n\n```\n{context_line[:200]}\n```\n\nThis appears in your document. Want me to search online for more info?"
         
         # Code type questions
         if any(word in question_lower for word in ['what type', 'what language', 'what code', 'programming language']):
             if 'const' in content or 'let' in content:
                 return "💻 **This is Node.js/JavaScript code!**\n\n**What it does:**\n• Creates an HTTP web server\n• Uses Node.js built-in modules (http, fs, path)\n• Handles incoming requests\n\n**Ask me:** 'What does fs do?' or 'Explain http.createServer'"
         
-        # Default document response
-        preview = content[:400] + "..." if len(content) > 400 else content
+        # Default document response - show first part of document
+        preview = content[:500] + "..." if len(content) > 500 else content
         return f"📄 **From your document '{filename}':**\n\n```\n{preview}\n```\n\n" \
                f"\n💡 **Try asking:**\n" \
                f"• 'Summarize this document'\n" \
