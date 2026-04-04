@@ -10,6 +10,7 @@ import re
 import logging
 import requests
 from datetime import datetime
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +164,7 @@ class DocumentHandler:
         """Determine if question is general knowledge (not about the document)"""
         question_lower = question.lower()
         
-        # General knowledge indicators - these are unlikely to be in a code file
+        # General knowledge indicators
         general_patterns = [
             r'who created', r'who founded', r'who invented', r'who is',
             r'what is the capital', r'what year', r'when was',
@@ -182,6 +183,37 @@ class DocumentHandler:
         return False
     
     @staticmethod
+    def is_conversational_or_emotional(question):
+        """Check if question is conversational or emotional (not technical)"""
+        question_lower = question.lower()
+        
+        conversational_patterns = [
+            r'i don\'?t understand',
+            r'i don\'?t get it',
+            r'confused',
+            r'what do you mean',
+            r'can you explain',
+            r'tell me more',
+            r'think of the future',
+            r'working for someone',
+            r'working for others',
+            r'my future',
+            r'my life',
+            r'i feel',
+            r'i think',
+            r'what should i do',
+            r'help me understand',
+            r'this is hard',
+            r'i am stuck'
+        ]
+        
+        for pattern in conversational_patterns:
+            if re.search(pattern, question_lower):
+                return True
+        
+        return False
+    
+    @staticmethod
     def is_document_specific_question(question, content):
         """Check if question is likely about the document content"""
         question_lower = question.lower()
@@ -189,7 +221,7 @@ class DocumentHandler:
         
         # Extract keywords from question
         keywords = re.findall(r'\b[a-zA-Z]{3,}\b', question_lower)
-        stopwords = {'what', 'does', 'this', 'that', 'tell', 'about', 'from', 'with', 'have', 'were', 'there', 'their', 'they', 'will', 'would', 'could', 'should', 'type', 'code', 'language', 'file', 'document', 'please', 'help', 'know', 'want', 'need', 'can', 'you', 'the', 'and', 'for', 'are', 'not', 'explain', 'mean', 'meaning', 'how', 'why', 'when', 'where', 'who', 'summarize', 'summary'}
+        stopwords = {'what', 'does', 'this', 'that', 'tell', 'about', 'from', 'with', 'have', 'were', 'there', 'their', 'they', 'will', 'would', 'could', 'should', 'type', 'code', 'language', 'file', 'document', 'please', 'help', 'know', 'want', 'need', 'can', 'you', 'the', 'and', 'for', 'are', 'not', 'explain', 'mean', 'meaning', 'how', 'why', 'when', 'where', 'who', 'summarize', 'summary', 'don't', 'dont', 'understand', 'feel', 'think'}
         keywords = [k for k in keywords if k not in stopwords]
         
         # Check if keywords appear in document
@@ -198,7 +230,6 @@ class DocumentHandler:
             if keyword in content_lower:
                 matches += 1
         
-        # If at least one keyword matches, it's likely document-specific
         return matches >= 1
     
     @staticmethod
@@ -230,6 +261,68 @@ class DocumentHandler:
         return None
     
     @staticmethod
+    def _handle_conversational_response(question, doc):
+        """Handle conversational/emotional questions in context of the document"""
+        question_lower = question.lower()
+        filename = doc['filename']
+        content = doc['content']
+        
+        # "I don't understand" responses
+        if 'don\'t understand' in question_lower or 'dont understand' in question_lower or 'don\'t get it' in question_lower:
+            responses = [
+                f"I understand this can be confusing. Let me break down what's in '{filename}':\n\n"
+                f"📖 **This is a code file** showing a vulnerable HTTP server example.\n\n"
+                f"**What it contains:**\n"
+                f"• Node.js server code using http module\n"
+                f"• File system operations with fs module\n"
+                f"• Path handling with path module\n"
+                f"• Intentional security vulnerabilities for learning\n\n"
+                f"💡 **Try asking:** 'What does the http module do?' or 'Explain the vulnerabilities'",
+                
+                f"No worries! '{filename}' is educational code showing how NOT to build a server.\n\n"
+                f"**The main points:**\n"
+                f"1. It creates an HTTP server\n"
+                f"2. It has intentional security flaws (CORS `*`, no validation)\n"
+                f"3. It's meant for learning about vulnerabilities\n\n"
+                f"Want me to explain a specific part?"
+            ]
+            return random.choice(responses)
+        
+        # Future/career related responses
+        if 'future' in question_lower or 'working for' in question_lower or 'work for someone' in question_lower:
+            return f"💭 **About your future and work:**\n\n" \
+                   f"The document '{filename}' is about code and servers, but your question touches on something deeper.\n\n" \
+                   f"**The code in this document shows:**\n" \
+                   f"• How to build things (servers)\n" \
+                   f"• How to identify vulnerabilities\n" \
+                   f"• How to think like a developer\n\n" \
+                   f"**Apply this to your future:**\n" \
+                   f"• Learning to build gives you options\n" \
+                   f"• Understanding systems helps you create, not just work for others\n" \
+                   f"• Every expert started confused - keep going!\n\n" \
+                   f"Want to understand how this server code works? Or ask me something else?"
+        
+        # General confusion/help responses
+        if 'confused' in question_lower or 'stuck' in question_lower or 'help me' in question_lower:
+            return f"🤔 **You're not alone!** This code can be confusing at first.\n\n" \
+                   f"**What '{filename}' is teaching:**\n" \
+                   f"• How HTTP servers work\n" \
+                   f"• Common security mistakes (vulnerabilities)\n" \
+                   f"• Node.js basics (fs, path, http modules)\n\n" \
+                   f"**Let me help:** Ask me 'What does http.createServer do?' or 'Explain the vulnerabilities'\n\n" \
+                   f"The more you ask, the clearer it becomes!"
+        
+        # "What should I do" responses
+        if 'what should i do' in question_lower:
+            return f"💡 **Based on the document '{filename}':**\n\n" \
+                   f"1. **Understand the code** - Ask me to explain each part\n" \
+                   f"2. **Identify vulnerabilities** - Look for CORS `*`, no input validation\n" \
+                   f"3. **Learn to fix them** - That's the educational goal\n\n" \
+                   f"**Next steps:** Try asking 'What's wrong with this code?' or 'How do I fix the vulnerabilities?'"
+        
+        return None
+    
+    @staticmethod
     def answer_question(client_id, question):
         """Answer question - routes to document or online search"""
         doc = DocumentHandler.get_user_document(client_id)
@@ -245,24 +338,25 @@ class DocumentHandler:
         filename = doc['filename']
         question_lower = question.lower().strip()
         
-        # ========== EXPLICIT SUMMARY COMMAND - HIGHEST PRIORITY ==========
+        # ========== HANDLE CONVERSATIONAL/EMOTIONAL QUESTIONS FIRST ==========
+        conversational_response = DocumentHandler._handle_conversational_response(question, doc)
+        if conversational_response:
+            return conversational_response
+        
+        # ========== EXPLICIT SUMMARY COMMAND ==========
         if any(word in question_lower for word in ['summarize', 'summary', 'gist', 'overview', 'what is this about', 'tell me about it']):
             lines = [l.strip() for l in content.split('\n') if l.strip() and len(l.strip()) > 10][:10]
             summary = f"📋 **Summary of '{filename}':**\n\n"
             
             if lines:
                 for i, line in enumerate(lines[:8], 1):
-                    # Truncate long lines
                     display_line = line[:200] + '...' if len(line) > 200 else line
                     summary += f"{i}. {display_line}\n\n"
             else:
-                # If no line breaks, just show first 600 chars
                 summary += f"{content[:600]}...\n\n"
             
-            # Add document stats
             summary += f"📊 **Document stats:** {len(content)} characters, {len(content.split())} words\n\n"
             
-            # Add helpful hints based on content type
             if 'const' in content or 'let' in content or 'function' in content:
                 summary += f"💡 **This appears to be code.** Try asking: 'What does fs do?' or 'Explain the http module'"
             else:
@@ -300,7 +394,6 @@ class DocumentHandler:
             
             explanation = DocumentHandler._get_code_explanation(term, content)
             
-            # Find where it appears in document
             lines = content.split('\n')
             context_line = None
             for line in lines:
@@ -321,10 +414,4 @@ class DocumentHandler:
             if 'const' in content or 'let' in content:
                 return "💻 **This is Node.js/JavaScript code!**\n\n**What it does:**\n• Creates an HTTP web server\n• Uses Node.js built-in modules (http, fs, path)\n• Handles incoming requests\n\n**Ask me:** 'What does fs do?' or 'Explain http.createServer'"
         
-        # Default document response - show first part of document
-        preview = content[:500] + "..." if len(content) > 500 else content
-        return f"📄 **From your document '{filename}':**\n\n```\n{preview}\n```\n\n" \
-               f"\n💡 **Try asking:**\n" \
-               f"• 'Summarize this document'\n" \
-               f"• 'What type of code is this?'\n" \
-               f"• 'What does fs do?'"
+  
