@@ -59,27 +59,17 @@ class JAIPersonality:
                 logger.error(f"Document upload error: {e}")
                 return f"❌ Error: {str(e)}"
         
-        # ========== DOCUMENT INTELLIGENCE (HIGHEST PRIORITY - MOVED TO TOP) ==========
-        # This MUST come before currency, calculations, and general knowledge
+        # ========== DOCUMENT INTELLIGENCE (HIGHEST PRIORITY) ==========
+        # This MUST come before all other intents when a document is loaded
         if DocumentHandler.has_document(client_id):
             doc = DocumentHandler.get_user_document(client_id)
             if doc:
-                # Check if this is a document-related question or just sending document content
-                # If message is very long (>200 chars) or contains document keywords, treat as doc request
-                doc_keywords = ['document', 'summarize', 'simplify', 'explain', 'what does', 
-                               'what is', 'code', 'function', 'fs', 'http', 'const', 'let']
-                
-                is_likely_doc_question = (
-                    len(original_message) > 100 or  # Long messages are likely document content
-                    any(keyword in msg for keyword in doc_keywords) or
-                    original_message.strip().endswith('?')
-                )
-                
-                if is_likely_doc_question:
-                    doc_answer = DocumentHandler.answer_question(client_id, original_message)
-                    if doc_answer and not doc_answer.startswith("🔍"):
-                        JAIMemory.save_conversation(client_id, original_message, doc_answer)
-                        return doc_answer
+                # Check if this is a document-related question
+                # Also handle any question when document is loaded (conversational included)
+                doc_answer = DocumentHandler.answer_question(client_id, original_message)
+                if doc_answer:
+                    JAIMemory.save_conversation(client_id, original_message, doc_answer)
+                    return doc_answer
         
         # ========== CHECK FOR GENERAL KNOWLEDGE QUESTIONS ==========
         general_knowledge_patterns = [
@@ -90,8 +80,7 @@ class JAIPersonality:
             r'when is', r'when was', r'when did',
             r'why is', r'why was', r'why did',
             r'how to', r'how do', r'how does',
-            r'tell me about', r'explain', r'define', r'meaning of',
-            r'what does .+ mean', r'what is .+ called'
+            r'tell me about', r'explain', r'define', r'meaning of'
         ]
         
         is_general_knowledge = False
@@ -103,7 +92,6 @@ class JAIPersonality:
         
         if original_message.strip().endswith('?'):
             is_general_knowledge = True
-            logger.info("General knowledge detected: question mark")
         
         if is_general_knowledge:
             logger.info(f"Searching online for: {original_message}")
@@ -132,7 +120,7 @@ class JAIPersonality:
             if calc_result:
                 return calc_result
         
-        # ========== CURRENCY CONVERSION (LOWER PRIORITY) ==========
+        # ========== CURRENCY CONVERSION ==========
         currency_result = JAICurrency.detect_and_convert(original_message)
         if currency_result:
             return currency_result
