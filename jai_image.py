@@ -67,7 +67,3 @@ class ImageHandler:
     def generate_simplified_description(info, description):
         """Generate simplified description"""
         return ImageCore.generate_simplified_description(info, description)
-
-
-# Re-export for backward compatibility
-__all__ = ['ImageHandler', 'ImageCore', 'ImageOCR', 'ImageCommandHandler']
