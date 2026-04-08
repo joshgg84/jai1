@@ -17,7 +17,7 @@ from jai_grammar_long import JAIGrammarLong
 from jai_memory import JAIMemory
 from jai_services import WebSearch, Weather, Calculator, TimeService
 from jai_document import DocumentHandler
-from jai_image import ImageHandler, ImageCommandHandler
+# from jai_image import ImageHandler, ImageCommandHandler  # COMMENTED OUT - FIX LATER
 
 logger = logging.getLogger(__name__)
 
@@ -60,11 +60,11 @@ class JAIPersonality:
                 logger.error(f"Document upload error: {e}")
                 return f"❌ Error: {str(e)}"
         
-        # ========== IMAGE UPLOAD COMMAND ==========
-        if ImageCommandHandler.is_image_command(msg):
-            result = ImageCommandHandler.process_upload(message, client_id)
-            JAIMemory.save_conversation(client_id, original_message, result)
-            return result
+        # ========== IMAGE UPLOAD COMMAND - DISABLED ==========
+        # if ImageCommandHandler.is_image_command(msg):
+        #     result = ImageCommandHandler.process_upload(message, client_id)
+        #     JAIMemory.save_conversation(client_id, original_message, result)
+        #     return result
         
         # ========== DOCUMENT INTELLIGENCE ==========
         if DocumentHandler.has_document(client_id):
@@ -75,20 +75,18 @@ class JAIPersonality:
                     JAIMemory.save_conversation(client_id, original_message, doc_answer)
                     return doc_answer
         
-        # ========== IMAGE INTELLIGENCE ==========
-        if ImageHandler.has_image(client_id):
-            # Clear image command
-            if msg == 'clear image' or msg == 'delete image':
-                ImageHandler.clear_image(client_id)
-                response = "🖼️ Image cleared. Upload a new one anytime!"
-                JAIMemory.save_conversation(client_id, original_message, response)
-                return response
-            
-            # Answer questions about the image
-            image_answer = ImageHandler.answer_question(client_id, original_message)
-            if image_answer:
-                JAIMemory.save_conversation(client_id, original_message, image_answer)
-                return image_answer
+        # ========== IMAGE INTELLIGENCE - DISABLED ==========
+        # if ImageHandler.has_image(client_id):
+        #     if msg == 'clear image' or msg == 'delete image':
+        #         ImageHandler.clear_image(client_id)
+        #         response = "🖼️ Image cleared. Upload a new one anytime!"
+        #         JAIMemory.save_conversation(client_id, original_message, response)
+        #         return response
+        #     
+        #     image_answer = ImageHandler.answer_question(client_id, original_message)
+        #     if image_answer:
+        #         JAIMemory.save_conversation(client_id, original_message, image_answer)
+        #         return image_answer
         
         # ========== CHECK FOR GENERAL KNOWLEDGE QUESTIONS ==========
         general_knowledge_patterns = [
@@ -225,11 +223,11 @@ class JAIPersonality:
             if DocumentHandler.has_document(client_id):
                 doc = DocumentHandler.get_user_document(client_id)
                 doc_status = f"\n\n📄 **Document loaded:** '{doc['filename']}'"
-            img_status = ""
-            if ImageHandler.has_image(client_id):
-                img = ImageHandler.get_user_image(client_id)
-                img_status = f"\n\n🖼️ **Image loaded:** '{img['filename']}'"
-            return f"📚 **I can help with:**\n\n🔍 **Search online** - Ask any question\n📄 **Read documents** - Upload PDF/DOCX/TXT\n🖼️ **Analyze images** - Upload and ask about images\n🌤️ **Weather** - Current conditions\n💰 **Currency** - Live exchange rates\n🧮 **Calculate** - Math problems\n💾 **Memory** - I learn from you!{doc_status}{img_status}"
+            # img_status = ""
+            # if ImageHandler.has_image(client_id):
+            #     img = ImageHandler.get_user_image(client_id)
+            #     img_status = f"\n\n🖼️ **Image loaded:** '{img['filename']}'"
+            return f"📚 **I can help with:**\n\n🔍 **Search online** - Ask any question\n📄 **Read documents** - Upload PDF/DOCX/TXT\n🌤️ **Weather** - Current conditions\n💰 **Currency** - Live exchange rates\n🧮 **Calculate** - Math problems\n💾 **Memory** - I learn from you!{doc_status}"
         
         # ========== JOKES ==========
         if any(j in msg for j in ["joke", "funny"]):
