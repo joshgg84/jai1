@@ -89,6 +89,35 @@ class JAIPersonality:
         #         JAIMemory.save_conversation(client_id, original_message, image_answer)
         #         return image_answer
         
+        # ========== CURRENCY CONVERSION (HIGH PRIORITY) ==========
+        # This must come BEFORE general knowledge to catch currency queries
+        currency_result = JAICurrency.detect_and_convert(original_message)
+        if currency_result:
+            JAIMemory.save_conversation(client_id, original_message, currency_result)
+            return currency_result
+        
+        # ========== WEATHER ==========
+        weather_response = Weather.detect_weather_query(original_message)
+        if weather_response:
+            JAIMemory.save_conversation(client_id, original_message, weather_response)
+            return weather_response
+        
+        # ========== CALCULATIONS ==========
+        percent_match = re.search(r'(\d+)\s*percent\s*of\s*(\d+)', msg)
+        if percent_match:
+            calc_result = Calculator.calculate(original_message)
+            if calc_result:
+                JAIMemory.save_conversation(client_id, original_message, calc_result)
+                return calc_result
+        
+        has_numbers = len(re.findall(r'\d+', original_message)) >= 2
+        has_math_op = any(op in msg for op in ['+', '-', '*', '/', '%'])
+        if has_numbers and has_math_op:
+            calc_result = Calculator.calculate(original_message)
+            if calc_result:
+                JAIMemory.save_conversation(client_id, original_message, calc_result)
+                return calc_result
+        
         # ========== CHECK FOR GENERAL KNOWLEDGE QUESTIONS ==========
         # More flexible question detection - handles multiple question marks, poor formatting, etc.
         
@@ -121,16 +150,15 @@ class JAIPersonality:
                 break
         
         # Check for question mark (anywhere in the message, not just at end)
-        # Also handle cases where user adds spaces before question mark
         has_question_mark = '?' in original_message or '？' in original_message
         
-        # Check if message looks like a question (starts with question words or ends with ?)
+        # Check if message looks like a question (starts with question words)
         question_start_words = ['what', 'who', 'where', 'when', 'why', 'how', 'which', 'whose', 'whom']
         starts_with_question = any(clean_msg.startswith(word) for word in question_start_words)
         
         if has_question_mark or starts_with_question:
             is_general_knowledge = True
-            logger.info(f"General knowledge detected: question pattern (has_question_mark={has_question_mark}, starts_with_question={starts_with_question})")
+            logger.info(f"General knowledge detected: question pattern")
         
         # Also check if the message is very short and looks like a question (e.g., "python?" or "who?")
         if len(clean_msg) < 30 and has_question_mark:
@@ -143,34 +171,6 @@ class JAIPersonality:
             if search_result:
                 JAIMemory.save_conversation(client_id, original_message, search_result)
                 return search_result
-        
-        # ========== WEATHER ==========
-        weather_response = Weather.detect_weather_query(original_message)
-        if weather_response:
-            JAIMemory.save_conversation(client_id, original_message, weather_response)
-            return weather_response
-        
-        # ========== CALCULATIONS ==========
-        percent_match = re.search(r'(\d+)\s*percent\s*of\s*(\d+)', msg)
-        if percent_match:
-            calc_result = Calculator.calculate(original_message)
-            if calc_result:
-                JAIMemory.save_conversation(client_id, original_message, calc_result)
-                return calc_result
-        
-        has_numbers = len(re.findall(r'\d+', original_message)) >= 2
-        has_math_op = any(op in msg for op in ['+', '-', '*', '/', '%'])
-        if has_numbers and has_math_op:
-            calc_result = Calculator.calculate(original_message)
-            if calc_result:
-                JAIMemory.save_conversation(client_id, original_message, calc_result)
-                return calc_result
-        
-        # ========== CURRENCY CONVERSION ==========
-        currency_result = JAICurrency.detect_and_convert(original_message)
-        if currency_result:
-            JAIMemory.save_conversation(client_id, original_message, currency_result)
-            return currency_result
         
         # ========== TIME & DATE ==========
         if "time" in msg:
