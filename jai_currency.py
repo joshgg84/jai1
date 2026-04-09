@@ -158,7 +158,7 @@ class JAICurrency:
                                 cls._rate_cache[currency] = cls.FALLBACK_RATES[currency]
                         
                         cls._last_update = datetime.now()
-                        logger.info(f"✅ Live rates fetched")
+                        logger.info("Live rates fetched successfully")
                         return True
                         
                 except Exception as e:
@@ -212,9 +212,6 @@ class JAICurrency:
         msg_lower = message.lower().strip()
         
         # Pattern 1: "150dollars to ksh" (no space between number and currency)
-        # Pattern 2: "150 dollars to ksh" (with space)
-        
-        # First, try to extract number and currency from patterns like "150dollars"
         number_currency_pattern = re.compile(r'(\d+(?:\.\d+)?)\s*([a-z]+)', re.IGNORECASE)
         match = number_currency_pattern.search(msg_lower)
         
@@ -226,7 +223,6 @@ class JAICurrency:
             from_currency_alias = match.group(2)
             logger.info(f"Found number+currency: {amount} {from_currency_alias}")
         else:
-            # Try regular amount extraction
             amount_match = re.search(r'(\d+(?:\.\d+)?)', msg_lower)
             if amount_match:
                 amount = float(amount_match.group(1))
@@ -234,16 +230,14 @@ class JAICurrency:
         if not amount:
             return None
         
-        # Find all currency codes mentioned in the message
+        # Find all currency codes mentioned
         found_currencies = []
         
-        # Check for currency aliases (including the one attached to number)
         for alias, code in cls.CURRENCY_ALIASES.items():
             if alias in msg_lower:
                 if code not in found_currencies:
                     found_currencies.append(code)
         
-        # Also check the extracted from_currency_alias
         if from_currency_alias:
             for alias, code in cls.CURRENCY_ALIASES.items():
                 if alias == from_currency_alias:
@@ -255,7 +249,6 @@ class JAICurrency:
         from_curr = None
         to_curr = None
         
-        # Look for "to" keyword
         to_keywords = ['to', 'in', 'into', 'for', '->']
         to_pos = len(msg_lower)
         
@@ -265,7 +258,6 @@ class JAICurrency:
                 to_pos = pos
         
         if to_pos < len(msg_lower):
-            # Split by "to" position
             before = msg_lower[:to_pos]
             after = msg_lower[to_pos:]
             
@@ -276,25 +268,19 @@ class JAICurrency:
                 elif code_lower in after and to_curr is None:
                     to_curr = code
         else:
-            # No "to" keyword, use first two currencies found
             if len(found_currencies) >= 2:
                 from_curr = found_currencies[0]
                 to_curr = found_currencies[1]
             elif len(found_currencies) == 1:
                 from_curr = found_currencies[0]
-                to_curr = 'KES' if from_curr != 'KES' else 'NGN'  # Default to KES or NGN
+                to_curr = 'KES' if from_curr != 'KES' else 'NGN'
         
-        # If we have both currencies, do conversion
         if from_curr and to_curr and from_curr != to_curr:
             result = cls.convert(amount, from_curr, to_curr)
             if result:
                 formatted_amount = cls.format(amount, from_curr)
                 formatted_result = cls.format(result, to_curr)
                 rate = cls.convert(1, from_curr, to_curr)
-                
-                # Get currency symbols/flags
-                from_info = cls.CURRENCIES.get(from_curr, {})
-                to_info = cls.CURRENCIES.get(to_curr, {})
                 
                 return f"💱 {formatted_amount} = {formatted_result}\n\n📊 Rate: 1 {from_curr} = {rate:,.4f} {to_curr}"
         
@@ -308,4 +294,11 @@ class JAICurrency:
     @classmethod
     def get_currency_info(cls, currency_code):
         """Get information about a specific currency"""
-        return cls.CURRENCIES.get(currency_code.upper(), None
+        return cls.CURRENCIES.get(currency_code.upper(), None)
+    
+    @classmethod
+    def get_last_update(cls):
+        """Get last update time for rates"""
+        if cls._last_update:
+            return cls._last_update.strftime("%Y-%m-%d %H:%M:%S")
+        return "Not updated yet"
