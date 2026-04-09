@@ -17,17 +17,17 @@ class JAICurrency:
     # Cache for live rates
     _rate_cache = {}
     _last_update = None
-    _cache_duration = timedelta(hours=1)  # Update every hour
+    _cache_duration = timedelta(hours=1)
     _cache_lock = Lock()
     
-    # Free API endpoints (fallback options)
+    # Free API endpoints
     API_ENDPOINTS = [
         "https://api.exchangerate-api.com/v4/latest/USD",
         "https://api.exchangerate.host/latest?base=USD",
         "https://v6.exchangerate-api.com/v6/latest/USD"
     ]
     
-    # Fallback static rates (used when API is unavailable)
+    # Fallback static rates
     FALLBACK_RATES = {
         'USD': 1.0, 'EUR': 1.08, 'GBP': 1.26, 'JPY': 150.0, 'CNY': 7.25,
         'INR': 83.0, 'RUB': 92.0, 'CHF': 0.88, 'CAD': 1.35, 'AUD': 1.52,
@@ -49,7 +49,6 @@ class JAICurrency:
     
     # Currency information
     CURRENCIES = {
-        # Major World Currencies
         'USD': {'name': 'US Dollar', 'symbol': '$', 'flag': '🇺🇸'},
         'EUR': {'name': 'Euro', 'symbol': '€', 'flag': '🇪🇺'},
         'GBP': {'name': 'British Pound', 'symbol': '£', 'flag': '🇬🇧'},
@@ -79,8 +78,6 @@ class JAICurrency:
         'AED': {'name': 'UAE Dirham', 'symbol': 'د.إ', 'flag': '🇦🇪'},
         'SAR': {'name': 'Saudi Riyal', 'symbol': '﷼', 'flag': '🇸🇦'},
         'ILS': {'name': 'Israeli Shekel', 'symbol': '₪', 'flag': '🇮🇱'},
-        
-        # African Currencies
         'NGN': {'name': 'Nigerian Naira', 'symbol': '₦', 'flag': '🇳🇬'},
         'ZAR': {'name': 'South African Rand', 'symbol': 'R', 'flag': '🇿🇦'},
         'KES': {'name': 'Kenyan Shilling', 'symbol': 'KSh', 'flag': '🇰🇪'},
@@ -96,43 +93,19 @@ class JAICurrency:
         'TND': {'name': 'Tunisian Dinar', 'symbol': 'DT', 'flag': '🇹🇳'},
         'DZD': {'name': 'Algerian Dinar', 'symbol': 'DA', 'flag': '🇩🇿'},
         'XOF': {'name': 'West African CFA Franc', 'symbol': 'CFA', 'flag': '🌍'},
-        'XAF': {'name': 'Central African CFA Franc', 'symbol': 'FCFA', 'flag': '🌍'},
-        'CDF': {'name': 'Congolese Franc', 'symbol': 'FC', 'flag': '🇨🇩'},
-        'MUR': {'name': 'Mauritian Rupee', 'symbol': '₨', 'flag': '🇲🇺'},
-        'SCR': {'name': 'Seychellois Rupee', 'symbol': '₨', 'flag': '🇸🇨'},
-        'ETB': {'name': 'Ethiopian Birr', 'symbol': 'Br', 'flag': '🇪🇹'},
-        'MZN': {'name': 'Mozambican Metical', 'symbol': 'MT', 'flag': '🇲🇿'},
-        'AOA': {'name': 'Angolan Kwanza', 'symbol': 'Kz', 'flag': '🇦🇴'},
-        'LSL': {'name': 'Lesotho Loti', 'symbol': 'L', 'flag': '🇱🇸'},
-        'SZL': {'name': 'Swazi Lilangeni', 'symbol': 'E', 'flag': '🇸🇿'},
-        'ZWL': {'name': 'Zimbabwean Dollar', 'symbol': '$', 'flag': '🇿🇼'},
-        'LYD': {'name': 'Libyan Dinar', 'symbol': 'LD', 'flag': '🇱🇾'},
-        'SDG': {'name': 'Sudanese Pound', 'symbol': '£', 'flag': '🇸🇩'},
-        'SOS': {'name': 'Somali Shilling', 'symbol': 'Sh', 'flag': '🇸🇴'},
-        'DJF': {'name': 'Djiboutian Franc', 'symbol': 'Fdj', 'flag': '🇩🇯'},
-        'KMF': {'name': 'Comorian Franc', 'symbol': 'CF', 'flag': '🇰🇲'},
-        'GMD': {'name': 'Gambian Dalasi', 'symbol': 'D', 'flag': '🇬🇲'},
-        'LRD': {'name': 'Liberian Dollar', 'symbol': '$', 'flag': '🇱🇷'},
-        'SLL': {'name': 'Sierra Leonean Leone', 'symbol': 'Le', 'flag': '🇸🇱'},
-        'MRU': {'name': 'Mauritanian Ouguiya', 'symbol': 'UM', 'flag': '🇲🇷'},
-        'ERN': {'name': 'Eritrean Nakfa', 'symbol': 'Nfk', 'flag': '🇪🇷'},
-        'BIF': {'name': 'Burundian Franc', 'symbol': 'FBu', 'flag': '🇧🇮'},
-        'MWK': {'name': 'Malawian Kwacha', 'symbol': 'MK', 'flag': '🇲🇼'},
-        'MGA': {'name': 'Malagasy Ariary', 'symbol': 'Ar', 'flag': '🇲🇬'},
-        'STN': {'name': 'São Tomé and Príncipe Dobra', 'symbol': 'Db', 'flag': '🇸🇹'},
-        'CVE': {'name': 'Cape Verdean Escudo', 'symbol': 'Esc', 'flag': '🇨🇻'}
+        'XAF': {'name': 'Central African CFA Franc', 'symbol': 'FCFA', 'flag': '🌍'}
     }
     
-    # Currency aliases for user input
+    # Currency aliases
     CURRENCY_ALIASES = {
         'usd': 'USD', 'dollar': 'USD', 'dollars': 'USD', 'us dollars': 'USD',
         'eur': 'EUR', 'euro': 'EUR', 'euros': 'EUR',
-        'gbp': 'GBP', 'pound': 'GBP', 'pounds': 'GBP', 'sterling': 'GBP', 'british pound': 'GBP',
+        'gbp': 'GBP', 'pound': 'GBP', 'pounds': 'GBP', 'sterling': 'GBP',
         'jpy': 'JPY', 'yen': 'JPY', 'japanese yen': 'JPY',
-        'cny': 'CNY', 'yuan': 'CNY', 'renminbi': 'CNY', 'chinese yuan': 'CNY',
+        'cny': 'CNY', 'yuan': 'CNY', 'renminbi': 'CNY',
         'inr': 'INR', 'rupee': 'INR', 'indian rupee': 'INR',
         'rub': 'RUB', 'ruble': 'RUB', 'russian ruble': 'RUB',
-        'chf': 'CHF', 'swiss franc': 'CHF', 'franc': 'CHF',
+        'chf': 'CHF', 'swiss franc': 'CHF',
         'cad': 'CAD', 'canadian dollar': 'CAD',
         'aud': 'AUD', 'australian dollar': 'AUD',
         'nzd': 'NZD', 'new zealand dollar': 'NZD',
@@ -142,11 +115,9 @@ class JAICurrency:
         'brl': 'BRL', 'real': 'BRL', 'brazilian real': 'BRL',
         'mxn': 'MXN', 'peso': 'MXN', 'mexican peso': 'MXN',
         'try': 'TRY', 'lira': 'TRY', 'turkish lira': 'TRY',
-        
-        # African currencies
         'ngn': 'NGN', 'naira': 'NGN', 'nigerian naira': 'NGN',
         'zar': 'ZAR', 'rand': 'ZAR', 'south african rand': 'ZAR', 'rands': 'ZAR',
-        'kes': 'KES', 'shilling': 'KES', 'kenyan shilling': 'KES', 'kenya shilling': 'KES', 'ksh': 'KES',
+        'kes': 'KES', 'shilling': 'KES', 'kenyan shilling': 'KES', 'ksh': 'KES',
         'ghs': 'GHS', 'cedi': 'GHS', 'ghanaian cedi': 'GHS',
         'ugx': 'UGX', 'ugandan shilling': 'UGX',
         'tzs': 'TZS', 'tanzanian shilling': 'TZS',
@@ -162,7 +133,6 @@ class JAICurrency:
         """Fetch live exchange rates from API"""
         with cls._cache_lock:
             if cls._last_update and datetime.now() - cls._last_update < cls._cache_duration:
-                logger.debug("Using cached exchange rates")
                 return True
             
             logger.info("Fetching live exchange rates...")
@@ -188,14 +158,13 @@ class JAICurrency:
                                 cls._rate_cache[currency] = cls.FALLBACK_RATES[currency]
                         
                         cls._last_update = datetime.now()
-                        logger.info(f"✅ Live rates fetched from {api_url}")
+                        logger.info(f"✅ Live rates fetched")
                         return True
                         
                 except Exception as e:
-                    logger.warning(f"Failed to fetch from {api_url}: {e}")
+                    logger.warning(f"Failed to fetch: {e}")
                     continue
             
-            logger.warning("Using fallback static rates")
             cls._rate_cache = cls.FALLBACK_RATES.copy()
             cls._last_update = datetime.now()
             return False
@@ -207,9 +176,6 @@ class JAICurrency:
         
         if not cls._rate_cache or not cls._last_update:
             cls.fetch_live_rates()
-        elif datetime.now() - cls._last_update > cls._cache_duration:
-            import threading
-            threading.Thread(target=cls.fetch_live_rates, daemon=True).start()
         
         return cls._rate_cache.get(currency, cls.FALLBACK_RATES.get(currency))
     
@@ -232,51 +198,74 @@ class JAICurrency:
         symbol = currency_info.get('symbol', currency)
         flag = currency_info.get('flag', '💰')
         
-        formatted = f"{amount:,.2f}"
-        
-        if currency.upper() in ['JPY', 'KRW', 'RUB', 'IDR', 'VND', 'UGX', 'TZS', 'RWF', 'CDF', 'BIF', 'MWK', 'MGA', 'SLL']:
+        if currency.upper() in ['JPY', 'KRW', 'RUB', 'IDR', 'VND', 'UGX', 'TZS', 'RWF']:
             return f"{flag} {symbol}{int(amount):,}"
-        elif currency.upper() in ['KES', 'NGN', 'GHS', 'ZAR', 'BWP', 'NAD', 'LSL', 'SZL']:
-            return f"{flag} {symbol}{formatted}"
         else:
-            return f"{flag} {formatted} {symbol}"
+            return f"{flag} {symbol}{amount:,.2f}"
     
     @classmethod
     def detect_and_convert(cls, message):
         """Detect currency conversion in message and return result"""
-        msg_lower = message.lower()
-        
-        # Extract amount
-        amount_match = re.search(r'(\d+(?:\.\d+)?)', msg_lower)
-        if not amount_match:
+        if not message:
             return None
         
-        amount = float(amount_match.group(1))
+        msg_lower = message.lower().strip()
         
-        # Find all currency codes mentioned
+        # Pattern 1: "150dollars to ksh" (no space between number and currency)
+        # Pattern 2: "150 dollars to ksh" (with space)
+        
+        # First, try to extract number and currency from patterns like "150dollars"
+        number_currency_pattern = re.compile(r'(\d+(?:\.\d+)?)\s*([a-z]+)', re.IGNORECASE)
+        match = number_currency_pattern.search(msg_lower)
+        
+        amount = None
+        from_currency_alias = None
+        
+        if match:
+            amount = float(match.group(1))
+            from_currency_alias = match.group(2)
+            logger.info(f"Found number+currency: {amount} {from_currency_alias}")
+        else:
+            # Try regular amount extraction
+            amount_match = re.search(r'(\d+(?:\.\d+)?)', msg_lower)
+            if amount_match:
+                amount = float(amount_match.group(1))
+        
+        if not amount:
+            return None
+        
+        # Find all currency codes mentioned in the message
         found_currencies = []
+        
+        # Check for currency aliases (including the one attached to number)
         for alias, code in cls.CURRENCY_ALIASES.items():
             if alias in msg_lower:
                 if code not in found_currencies:
                     found_currencies.append(code)
         
-        # Remove duplicates
-        found_currencies = list(dict.fromkeys(found_currencies))
+        # Also check the extracted from_currency_alias
+        if from_currency_alias:
+            for alias, code in cls.CURRENCY_ALIASES.items():
+                if alias == from_currency_alias:
+                    if code not in found_currencies:
+                        found_currencies.insert(0, code)
+                    break
         
-        # Determine from/to based on pattern
+        # Determine from/to based on keywords
         from_curr = None
         to_curr = None
         
-        # Look for "to" or "in" keyword
-        to_keywords = ['to', 'in', 'into', 'for']
+        # Look for "to" keyword
+        to_keywords = ['to', 'in', 'into', 'for', '->']
         to_pos = len(msg_lower)
+        
         for kw in to_keywords:
             pos = msg_lower.find(kw)
             if pos != -1 and pos < to_pos:
                 to_pos = pos
         
-        # If we found a "to" keyword, split by position
         if to_pos < len(msg_lower):
+            # Split by "to" position
             before = msg_lower[:to_pos]
             after = msg_lower[to_pos:]
             
@@ -287,21 +276,26 @@ class JAICurrency:
                 elif code_lower in after and to_curr is None:
                     to_curr = code
         else:
-            # No "to" keyword, use first as from, last as to
+            # No "to" keyword, use first two currencies found
             if len(found_currencies) >= 2:
                 from_curr = found_currencies[0]
-                to_curr = found_currencies[-1]
+                to_curr = found_currencies[1]
             elif len(found_currencies) == 1:
-                # Only one currency found, assume converting to NGN
                 from_curr = found_currencies[0]
-                to_curr = 'NGN'
+                to_curr = 'KES' if from_curr != 'KES' else 'NGN'  # Default to KES or NGN
         
-        if from_curr and to_curr:
+        # If we have both currencies, do conversion
+        if from_curr and to_curr and from_curr != to_curr:
             result = cls.convert(amount, from_curr, to_curr)
             if result:
                 formatted_amount = cls.format(amount, from_curr)
                 formatted_result = cls.format(result, to_curr)
                 rate = cls.convert(1, from_curr, to_curr)
+                
+                # Get currency symbols/flags
+                from_info = cls.CURRENCIES.get(from_curr, {})
+                to_info = cls.CURRENCIES.get(to_curr, {})
+                
                 return f"💱 {formatted_amount} = {formatted_result}\n\n📊 Rate: 1 {from_curr} = {rate:,.4f} {to_curr}"
         
         return None
@@ -314,11 +308,4 @@ class JAICurrency:
     @classmethod
     def get_currency_info(cls, currency_code):
         """Get information about a specific currency"""
-        return cls.CURRENCIES.get(currency_code.upper(), None)
-    
-    @classmethod
-    def get_last_update(cls):
-        """Get last update time for rates"""
-        if cls._last_update:
-            return cls._last_update.strftime("%Y-%m-%d %H:%M:%S")
-        return "Not updated yet"
+        return cls.CURRENCIES.get(currency_code.upper(), None
