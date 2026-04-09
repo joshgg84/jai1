@@ -12,38 +12,21 @@ logger = logging.getLogger(__name__)
 
 # ========== WEB SEARCH MODULE ==========
 class WebSearch:
-    """Fast and efficient web search with disambiguation"""
-    
-    # Track ambiguous queries that need clarification
-    _pending_clarifications = {}
+    """Fast and efficient web search"""
     
     @classmethod
     def search_online(cls, query):
-        """Quick search using Wikipedia API with disambiguation support"""
-        if not query:
-            return None
-            
+        """Quick search using Wikipedia API"""
         try:
-            logger.info(f"Original query: {query}")
-            
-            # STEP 1: Check if this is a clarification response to a pending question
-            clarification_result = cls._check_clarification_response(query)
-            if clarification_result:
-                return clarification_result
-            
-            # STEP 2: Extract the main subject
+            # Clean the query - extract the main subject
             clean_query = cls._extract_subject(query)
             if not clean_query or len(clean_query) < 3:
                 return None
             
+            logger.info(f"Original query: {query}")
             logger.info(f"Extracted subject: {clean_query}")
             
-            # STEP 3: Check for ambiguous terms FIRST (before searching)
-            ambiguous_result = cls._check_ambiguity(clean_query, query)
-            if ambiguous_result:
-                return ambiguous_result
-            
-            # STEP 4: If not ambiguous, search Wikipedia
+            # Try Wikipedia directly
             result = cls._search_wikipedia(clean_query)
             if result:
                 return result
@@ -55,147 +38,21 @@ class WebSearch:
             return None
     
     @classmethod
-    def _check_clarification_response(cls, message):
-        """Check if user is responding to a pending clarification"""
-        if not message:
-            return None
-            
-        message_lower = message.lower().strip()
-        
-        # Clean up old pending clarifications (older than 2 minutes)
-        current_time = datetime.now()
-        to_delete = []
-        for key, data in cls._pending_clarifications.items():
-            if (current_time - data.get('timestamp', current_time)).seconds > 120:
-                to_delete.append(key)
-        for key in to_delete:
-            del cls._pending_clarifications[key]
-        
-        # Check each pending clarification
-        for query_hash, pending in list(cls._pending_clarifications.items()):
-            options = pending.get('options', [])
-            
-            # Check if user replied with a number
-            if message_lower.isdigit():
-                num = int(message_lower)
-                if 1 <= num <= len(options):
-                    selected = options[num - 1]
-                    del cls._pending_clarifications[query_hash]
-                    result = cls._search_wikipedia(selected['search'])
-                    if result:
-                        return f"🔍 {result}"
-                    return f"🔍 Here's what I found about {selected['name']}"
-            
-            # Check if user replied with text matching any option
-            for option in options:
-                option_name_lower = option['name'].lower()
-                
-                # Direct match or partial match
-                if (message_lower in option_name_lower or 
-                    option_name_lower in message_lower):
-                    del cls._pending_clarifications[query_hash]
-                    result = cls._search_wikipedia(option['search'])
-                    if result:
-                        return f"🔍 {result}"
-                    return f"🔍 Here's what I found about {option['name']}"
-                
-                # Extract keywords from parentheses like (programming language)
-                paren_match = re.search(r'\(([^)]+)\)', option['name'])
-                if paren_match:
-                    keyword = paren_match.group(1).lower()
-                    if keyword in message_lower or message_lower in keyword:
-                        del cls._pending_clarifications[query_hash]
-                        result = cls._search_wikipedia(option['search'])
-                        if result:
-                            return f"🔍 {result}"
-                        return f"🔍 Here's what I found about {option['name']}"
-        
-        return None
-    
-    @classmethod
-    def _check_ambiguity(cls, term, original_query):
-        """Check if term is ambiguous and ask for clarification"""
-        if not term:
-            return None
-            
-        # Convert to lowercase for matching
-        term_lower = term.lower()
-        
-        # Known ambiguous terms
-        ambiguous_terms = {
-            'python': [
-                {'name': 'Python (programming language)', 'search': 'Python programming language'},
-                {'name': 'Python (snake)', 'search': 'Python snake'}
-            ],
-            'java': [
-                {'name': 'Java (programming language)', 'search': 'Java programming language'},
-                {'name': 'Java (island)', 'search': 'Java island'},
-                {'name': 'Java (coffee)', 'search': 'Java coffee'}
-            ],
-            'spring': [
-                {'name': 'Spring (season)', 'search': 'Spring season'},
-                {'name': 'Spring (framework)', 'search': 'Spring Framework'}
-            ],
-            'apple': [
-                {'name': 'Apple (company)', 'search': 'Apple Inc'},
-                {'name': 'Apple (fruit)', 'search': 'Apple fruit'}
-            ],
-            'amazon': [
-                {'name': 'Amazon (company)', 'search': 'Amazon.com'},
-                {'name': 'Amazon (rainforest)', 'search': 'Amazon rainforest'}
-            ],
-            'windows': [
-                {'name': 'Windows (operating system)', 'search': 'Microsoft Windows'},
-                {'name': 'Windows (glass)', 'search': 'Window glass'}
-            ],
-            'table': [
-                {'name': 'Table (furniture)', 'search': 'Table furniture'},
-                {'name': 'Table (database)', 'search': 'Database table'}
-            ],
-            'bank': [
-                {'name': 'Bank (financial)', 'search': 'Bank'},
-                {'name': 'Bank (river)', 'search': 'Bank river'}
-            ],
-            'cricket': [
-                {'name': 'Cricket (sport)', 'search': 'Cricket sport'},
-                {'name': 'Cricket (insect)', 'search': 'Cricket insect'}
-            ]
-        }
-        
-        # Check if this term is ambiguous
-        if term_lower in ambiguous_terms:
-            # Create a hash key from the original query
-            query_hash = original_query.lower().strip()
-            
-            # Check if we already asked about this exact query
-            if query_hash in cls._pending_clarifications:
-                # Already waiting for clarification, don't ask again
-                return None
-            
-            # Store pending clarification
-            cls._pending_clarifications[query_hash] = {
-                'options': ambiguous_terms[term_lower],
-                'timestamp': datetime.now()
-            }
-            
-            # Build options text
-            options_text = "\n".join([f"• {i+1}. {opt['name']}" for i, opt in enumerate(ambiguous_terms[term_lower])])
-            return f"🔍 **Which {term} do you mean?**\n\n{options_text}\n\nReply with the number (e.g., '1') or name."
-        
-        return None
-    
-    @classmethod
     def _extract_subject(cls, query):
-        """Extract the main subject from a question"""
+        """Extract the main subject from a question - handles messy input"""
         if not query:
             return ""
-            
-        query_lower = query.lower().strip()
         
-        # Remove question mark
-        query_clean = query.replace('?', '').strip()
+        # Clean up the query first
+        query = query.strip()
+        # Remove multiple question marks
+        query = re.sub(r'\?{2,}', '?', query)
+        # Remove trailing question mark for processing
+        query_without_q = query.rstrip('?').strip()
         
-        # List of question patterns to remove
+        query_lower = query_without_q.lower()
+        
+        # List of question patterns to remove (expanded)
         question_patterns = [
             'who created', 'who made', 'who invented', 'who discovered',
             'who founded', 'who is', 'who was', 'who are',
@@ -205,38 +62,33 @@ class WebSearch:
             'why is', 'why was', 'why did',
             'how to', 'how do', 'how does',
             'tell me about', 'explain', 'define',
-            'can you tell me about', 'do you know'
+            'can you tell me about', 'do you know',
+            'can you', 'could you', 'please tell me',
+            'i want to know about', 'what\'s', 'who\'s'
         ]
         
         # Remove the question prefix
         for pattern in question_patterns:
             if query_lower.startswith(pattern):
-                query_clean = query_clean[len(pattern):].strip()
+                query_without_q = query_without_q[len(pattern):].strip()
                 break
         
-        # If query is too short, get last word
-        if len(query_clean) < 3:
+        # If nothing left, try to get the last meaningful word
+        if len(query_without_q) < 2:
             words = query_lower.split()
             if words:
-                query_clean = words[-1]
+                # Get the last word (likely the subject)
+                query_without_q = words[-1]
         
-        # Return as-is for ambiguous terms (keep lowercase for matching)
-        # This ensures 'python' matches the ambiguous_terms dict key
-        if query_clean.lower() in ['python', 'java', 'spring', 'apple', 'amazon', 'windows', 'table', 'bank', 'cricket']:
-            return query_clean.lower()
+        # Capitalize first letter for Wikipedia
+        if query_without_q and not query_without_q[0].isdigit():
+            query_without_q = query_without_q[0].upper() + query_without_q[1:]
         
-        # Capitalize first letter for everything else
-        if query_clean and not query_clean[0].isdigit():
-            query_clean = query_clean[0].upper() + query_clean[1:]
-        
-        return query_clean
+        return query_without_q
     
     @classmethod
     def _search_wikipedia(cls, term):
         """Search Wikipedia for a term"""
-        if not term:
-            return None
-            
         try:
             # Format the term for URL
             formatted_term = term.replace(' ', '_')
@@ -250,32 +102,40 @@ class WebSearch:
             if response.status_code == 200:
                 data = response.json()
                 if data.get('extract'):
-                    extract = cls._clean_extract(data['extract'])
-                    # Check if this is a disambiguation page
-                    if extract.startswith('may refer to') or 'refer to:' in extract[:100]:
-                        logger.info(f"Disambiguation page detected for: {term}")
-                        # Try to find a better page
-                        if term.lower() == 'python':
-                            return cls._search_wikipedia('Python programming language')
+                    extract = data['extract']
+                    # Remove parentheticals
+                    extract = re.sub(r'\([^)]*\)', '', extract)
+                    # Clean up whitespace
+                    extract = ' '.join(extract.split())
+                    # Limit length
+                    if len(extract) > 600:
+                        extract = extract[:600] + "..."
+                    logger.info(f"Found Wikipedia page for: {term}")
                     return extract
             
-            # Try search API
+            # Try search API if direct page fails
             search_url = f'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={term}&format=json'
             search_response = requests.get(search_url, timeout=8)
             
             if search_response.status_code == 200:
                 search_data = search_response.json()
                 if search_data.get('query', {}).get('search'):
+                    # Get the first search result
                     first_result = search_data['query']['search'][0]['title']
                     logger.info(f"Search found: {first_result}")
                     
+                    # Fetch that page
                     page_url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{first_result.replace(" ", "_")}'
                     page_response = requests.get(page_url, timeout=8)
                     
                     if page_response.status_code == 200:
                         page_data = page_response.json()
                         if page_data.get('extract'):
-                            extract = cls._clean_extract(page_data['extract'])
+                            extract = page_data['extract']
+                            extract = re.sub(r'\([^)]*\)', '', extract)
+                            extract = ' '.join(extract.split())
+                            if len(extract) > 600:
+                                extract = extract[:600] + "..."
                             return extract
             
             return None
@@ -284,26 +144,14 @@ class WebSearch:
             return None
     
     @classmethod
-    def _clean_extract(cls, extract):
-        """Clean and truncate Wikipedia extract"""
-        if not extract:
-            return ""
-        # Remove parentheticals
-        extract = re.sub(r'\([^)]*\)', '', extract)
-        # Clean up whitespace
-        extract = ' '.join(extract.split())
-        # Limit length
-        if len(extract) > 800:
-            extract = extract[:800] + "..."
-        return extract
-    
-    @classmethod
     def should_search(cls, message):
-        """Quick check if message needs web search"""
+        """Quick check if message needs web search - more flexible"""
         if not message:
             return False
             
         msg = message.lower().strip()
+        # Remove excessive question marks
+        msg = re.sub(r'\?{2,}', '?', msg)
         
         # Check for question patterns
         question_patterns = [
@@ -314,7 +162,8 @@ class WebSearch:
             'when is', 'when was', 'when did',
             'why is', 'why was', 'why did',
             'how to', 'how do', 'how does',
-            'tell me about', 'explain', 'define'
+            'tell me about', 'explain', 'define',
+            'can you', 'could you', 'do you know'
         ]
         
         for pattern in question_patterns:
@@ -322,9 +171,15 @@ class WebSearch:
                 logger.info(f"Search triggered by: {pattern}")
                 return True
         
-        # Check for question mark
+        # Check for question mark (anywhere, not just end)
         if '?' in msg:
             logger.info("Search triggered by question mark")
+            return True
+        
+        # Check if message starts with question words
+        question_starts = ['what', 'who', 'where', 'when', 'why', 'how', 'which']
+        if any(msg.startswith(word) for word in question_starts):
+            logger.info(f"Search triggered by question start word")
             return True
         
         return False
@@ -332,12 +187,10 @@ class WebSearch:
 
 # ========== FAST CACHE ==========
 _search_cache = {}
-_cache_duration = 3600
+_cache_duration = 3600  # 1 hour
 
 def get_cached_search(query):
     """Get cached search result"""
-    if not query:
-        return None
     key = query.lower().strip()
     if key in _search_cache:
         cache_time = _search_cache[key]['time']
@@ -347,8 +200,6 @@ def get_cached_search(query):
 
 def cache_search_result(query, result):
     """Cache search result"""
-    if not query:
-        return
     key = query.lower().strip()
     _search_cache[key] = {
         'result': result,
