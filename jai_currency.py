@@ -146,7 +146,7 @@ class JAICurrency:
         # African currencies
         'ngn': 'NGN', 'naira': 'NGN', 'nigerian naira': 'NGN',
         'zar': 'ZAR', 'rand': 'ZAR', 'south african rand': 'ZAR', 'rands': 'ZAR',
-        'kes': 'KES', 'shilling': 'KES', 'kenyan shilling': 'KES', 'kenya shilling': 'KES',
+        'kes': 'KES', 'shilling': 'KES', 'kenyan shilling': 'KES', 'kenya shilling': 'KES', 'ksh': 'KES',
         'ghs': 'GHS', 'cedi': 'GHS', 'ghanaian cedi': 'GHS',
         'ugx': 'UGX', 'ugandan shilling': 'UGX',
         'tzs': 'TZS', 'tanzanian shilling': 'TZS',
@@ -161,7 +161,6 @@ class JAICurrency:
     def fetch_live_rates(cls):
         """Fetch live exchange rates from API"""
         with cls._cache_lock:
-            # Check if cache is still valid
             if cls._last_update and datetime.now() - cls._last_update < cls._cache_duration:
                 logger.debug("Using cached exchange rates")
                 return True
@@ -174,7 +173,6 @@ class JAICurrency:
                     if response.status_code == 200:
                         data = response.json()
                         
-                        # Handle different API response formats
                         if 'rates' in data:
                             rates = data['rates']
                         elif 'quotes' in data:
@@ -183,7 +181,6 @@ class JAICurrency:
                         else:
                             continue
                         
-                        # Update cache with live rates
                         for currency in cls.CURRENCIES.keys():
                             if currency in rates:
                                 cls._rate_cache[currency] = rates[currency]
@@ -198,7 +195,6 @@ class JAICurrency:
                     logger.warning(f"Failed to fetch from {api_url}: {e}")
                     continue
             
-            # If all APIs fail, use fallback rates
             logger.warning("Using fallback static rates")
             cls._rate_cache = cls.FALLBACK_RATES.copy()
             cls._last_update = datetime.now()
@@ -209,11 +205,9 @@ class JAICurrency:
         """Get exchange rate for a currency (USD base)"""
         currency = currency.upper()
         
-        # Fetch rates if cache is empty or expired
         if not cls._rate_cache or not cls._last_update:
             cls.fetch_live_rates()
         elif datetime.now() - cls._last_update > cls._cache_duration:
-            # Background refresh (don't block)
             import threading
             threading.Thread(target=cls.fetch_live_rates, daemon=True).start()
         
@@ -240,10 +234,9 @@ class JAICurrency:
         
         formatted = f"{amount:,.2f}"
         
-        # Special formatting for certain currencies
         if currency.upper() in ['JPY', 'KRW', 'RUB', 'IDR', 'VND', 'UGX', 'TZS', 'RWF', 'CDF', 'BIF', 'MWK', 'MGA', 'SLL']:
             return f"{flag} {symbol}{int(amount):,}"
-        elif currency.upper() in ['NGN', 'GHS', 'KES', 'ZAR', 'BWP', 'NAD', 'LSL', 'SZL']:
+        elif currency.upper() in ['KES', 'NGN', 'GHS', 'ZAR', 'BWP', 'NAD', 'LSL', 'SZL']:
             return f"{flag} {symbol}{formatted}"
         else:
             return f"{flag} {formatted} {symbol}"
@@ -267,51 +260,49 @@ class JAICurrency:
                 if code not in found_currencies:
                     found_currencies.append(code)
         
-        # If we found two currencies, determine from/to
-        if len(found_currencies) >= 2:
-            # Look for direction indicators
-            to_pos = float('inf')
-            if 'to' in msg_lower:
-                to_pos = msg_lower.find('to')
-            if 'in' in msg_lower:
-                in_pos = msg_lower.find('in')
-                if in_pos < to_pos:
-                    to_pos = in_pos
+        # Remove duplicates
+        found_currencies = list(dict.fromkeys(found_currencies))
+        
+        # Determine from/to based on pattern
+        from_curr = None
+        to_curr = None
+        
+        # Look for "to" or "in" keyword
+        to_keywords = ['to', 'in', 'into', 'for']
+        to_pos = len(msg_lower)
+        for kw in to_keywords:
+            pos = msg_lower.find(kw)
+            if pos != -1 and pos < to_pos:
+                to_pos = pos
+        
+        # If we found a "to" keyword, split by position
+        if to_pos < len(msg_lower):
+            before = msg_lower[:to_pos]
+            after = msg_lower[to_pos:]
             
-            to_curr = None
-            from_curr = None
             for code in found_currencies:
                 code_lower = code.lower()
-                if code_lower in msg_lower and msg_lower.find(code_lower) > to_pos:
+                if code_lower in before and from_curr is None:
+                    from_curr = code
+                elif code_lower in after and to_curr is None:
                     to_curr = code
-                else:
-                    if from_curr is None:
-                        from_curr = code
-                    elif to_curr is None:
-                        to_curr = code
-            
-            if not to_curr and len(found_currencies) >= 2:
-                from_curr, to_curr = found_currencies[0], found_currencies[1]
-            
-            if from_curr and to_curr:
-                result = cls.convert(amount, from_curr, to_curr)
-                if result:
-                    formatted_amount = cls.format(amount, from_curr)
-                    formatted_result = cls.format(result, to_curr)
-                    from_info = cls.CURRENCIES.get(from_curr, {})
-                    to_info = cls.CURRENCIES.get(to_curr, {})
-                    return f"💱 {formatted_amount} = {formatted_result}\n\n📊 Rate: 1 {from_curr} = {cls.convert(1, from_curr, to_curr):,.4f} {to_curr}"
+        else:
+            # No "to" keyword, use first as from, last as to
+            if len(found_currencies) >= 2:
+                from_curr = found_currencies[0]
+                to_curr = found_currencies[-1]
+            elif len(found_currencies) == 1:
+                # Only one currency found, assume converting to NGN
+                from_curr = found_currencies[0]
+                to_curr = 'NGN'
         
-        # If only one currency found, assume converting to NGN
-        elif len(found_currencies) == 1:
-            from_curr = found_currencies[0]
-            to_curr = 'NGN'
+        if from_curr and to_curr:
             result = cls.convert(amount, from_curr, to_curr)
             if result:
                 formatted_amount = cls.format(amount, from_curr)
                 formatted_result = cls.format(result, to_curr)
-                from_info = cls.CURRENCIES.get(from_curr, {})
-                return f"💱 {formatted_amount} = {formatted_result}\n\n📊 Rate: 1 {from_curr} = {cls.convert(1, from_curr, to_curr):,.4f} NGN"
+                rate = cls.convert(1, from_curr, to_curr)
+                return f"💱 {formatted_amount} = {formatted_result}\n\n📊 Rate: 1 {from_curr} = {rate:,.4f} {to_curr}"
         
         return None
     
