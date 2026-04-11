@@ -18,6 +18,7 @@ from jai_memory import JAIMemory
 from jai_services import WebSearch, Weather, Calculator, TimeService
 from jai_document import DocumentHandler
 from jai_professional_writer import ProfessionalWriterHandler
+from jai_creative_writer import CreativeWriterHandler
 
 logger = logging.getLogger(__name__)
 
@@ -137,21 +138,15 @@ class JAIPersonality:
             JAIMemory.save_conversation(client_id, original_message, response)
             return response
         
-        # ========== PROFESSIONAL WRITER (HIGH PRIORITY - BEFORE GENERAL KNOWLEDGE) ==========
-        # Check for any writing-related request
-        writing_keywords = [
-            'write', 'draft', 'compose', 'email', 'letter', 'proposal', 
-            'cover letter', 'report', 'memo', 'note', 'message',
-            'love letter', 'apology letter', 'thank you letter', 'resignation'
-        ]
+        # ========== CREATIVE WRITER (Love letters, poems, stories) ==========
+        if CreativeWriterHandler.is_creative_request(original_message):
+            creative_response = CreativeWriterHandler.handle_creative_request(original_message)
+            if creative_response:
+                JAIMemory.save_conversation(client_id, original_message, creative_response)
+                return creative_response
         
-        is_writing_request = False
-        for keyword in writing_keywords:
-            if keyword in msg:
-                is_writing_request = True
-                break
-        
-        if is_writing_request:
+        # ========== PROFESSIONAL WRITER (Emails, proposals, reports) ==========
+        if ProfessionalWriterHandler.is_writing_request(original_message):
             writing_response = ProfessionalWriterHandler.handle_writing_request(original_message)
             if writing_response:
                 JAIMemory.save_conversation(client_id, original_message, writing_response)
@@ -219,6 +214,12 @@ class JAIPersonality:
             JAIMemory.save_conversation(client_id, original_message, next_time_response)
             return next_time_response
         
+        # ========== CASUAL RESPONSES (Greetings, how are you, thanks, goodbye, etc.) ==========
+        casual_response = JAICasual.get_casual_response(original_message, user_name)
+        if casual_response:
+            JAIMemory.save_conversation(client_id, original_message, casual_response)
+            return casual_response
+        
         # ========== CHECK FOR GENERAL KNOWLEDGE QUESTIONS ==========
         clean_msg = msg.strip()
         clean_msg = re.sub(r'\?{3,}', '?', clean_msg)
@@ -280,96 +281,12 @@ class JAIPersonality:
             JAIMemory.save_conversation(client_id, original_message, result)
             return result
         
-        # ========== GREETINGS ==========
-        if any(g in msg for g in ["good morning", "morning"]):
-            response = f"Good morning{', ' + user_name if user_name else ''}! 🌅"
-            JAIMemory.save_conversation(client_id, original_message, response)
-            return response
-        if any(g in msg for g in ["good afternoon", "afternoon"]):
-            response = f"Good afternoon{', ' + user_name if user_name else ''}! 🌞"
-            JAIMemory.save_conversation(client_id, original_message, response)
-            return response
-        if any(g in msg for g in ["good evening", "evening"]):
-            response = f"Good evening{', ' + user_name if user_name else ''}! 🌙"
-            JAIMemory.save_conversation(client_id, original_message, response)
-            return response
-        if any(g in msg for g in ["good night", "night"]):
-            response = "Good night! 🌙"
-            JAIMemory.save_conversation(client_id, original_message, response)
-            return response
-        
-        if any(g in msg for g in ["hi", "hello", "hey", "howdy"]):
-            if user_name:
-                response = f"Hello {user_name}! 😊 How can I help you today?"
-            else:
-                response = "Hello! 😊 I'm K-LYNX AI++. What's your name? (Tell me 'My name is...')"
-            JAIMemory.save_conversation(client_id, original_message, response)
-            return response
-        
-        # ========== HOW ARE YOU ==========
-        if any(h in msg for h in ["how are you", "how you doing"]):
-            response = "I'm doing great! Thanks for asking! How can I help you today?"
-            JAIMemory.save_conversation(client_id, original_message, response)
-            return response
-        
-        # ========== THANKS ==========
-        if any(t in msg for t in ["thank", "thanks"]):
-            response = "You're welcome! 😊 Is there anything else I can help with?"
-            JAIMemory.save_conversation(client_id, original_message, response)
-            return response
-        
-        # ========== GOODBYE ==========
-        if any(g in msg for g in ["bye", "goodbye", "see you"]):
-            response = f"Goodbye{', ' + user_name if user_name else ''}! Take care! 👋 I'll be here when you return."
-            JAIMemory.save_conversation(client_id, original_message, response)
-            return response
-        
-        # ========== CREATOR ==========
-        if any(c in msg for c in ["who made you", "who created you"]):
-            response = "I was created by Joshua Giwa from Yukuben Village, Nigeria! 🇳🇬"
-            JAIMemory.save_conversation(client_id, original_message, response)
-            return response
-        
-        # ========== CAPABILITIES ==========
-        if any(c in msg for c in ["what can you do", "your skills", "help", "capabilities"]):
-            doc_status = ""
-            if DocumentHandler.has_document(client_id):
-                doc = DocumentHandler.get_user_document(client_id)
-                doc_status = f"\n\n📄 **Document loaded:** '{doc['filename']}'"
-            response = f"📚 **I can help with:**\n\n🔍 **Search online** - Ask any question\n📄 **Read documents** - Upload PDF/DOCX/TXT\n✍️ **Professional writing** - Emails, letters, proposals, cover letters\n🌤️ **Weather** - Current conditions\n💰 **Currency** - Live exchange rates\n🧮 **Calculate** - Math problems\n💾 **Memory** - I remember your name and facts!\n\n💡 Try asking: 'Write an email to John', 'What is Python?', or '100 USD to KES'{doc_status}"
-            JAIMemory.save_conversation(client_id, original_message, response)
-            return response
-        
-        # ========== JOKES ==========
-        if any(j in msg for j in ["joke", "funny"]):
-            jokes = [
-                "Why don't scientists trust atoms? Because they make up everything! 😄",
-                "What do you call a fake noodle? An impasta! 🍝",
-                "Why did the scarecrow win an award? He was outstanding in his field! 🌾",
-                "What do you call a bear with no teeth? A gummy bear! 🐻",
-                "Why don't eggs tell jokes? They'd crack each other up! 🥚"
-            ]
-            response = random.choice(jokes)
-            JAIMemory.save_conversation(client_id, original_message, response)
-            return response
-        
-        # ========== MOTIVATION ==========
-        if any(m in msg for m in ["motivate me", "inspire me"]):
-            response = JAIGrammarLong.build_long_motivation()
-            JAIMemory.save_conversation(client_id, original_message, response)
-            return response
-        
-        # ========== INTENT & CASUAL ==========
+        # ========== INTENT & NATURAL ==========
         intent = JAINLP.extract_intent(original_message)
         intent_response = JAIIntent.get_response(intent)
         if intent_response:
             JAIMemory.save_conversation(client_id, original_message, intent_response)
             return intent_response
-        
-        casual = JAICasual.get_casual_response(original_message)
-        if casual:
-            JAIMemory.save_conversation(client_id, original_message, casual)
-            return casual
         
         natural = JAINatural.get_natural_response(original_message)
         if natural:
@@ -380,6 +297,12 @@ class JAIPersonality:
         if conv:
             JAIMemory.save_conversation(client_id, original_message, conv)
             return conv
+        
+        # ========== PROFESSIONAL WRITER FALLBACK ==========
+        if any(w in msg for w in ['write', 'draft', 'compose', 'email', 'letter', 'proposal']):
+            response = ProfessionalWriterHandler.get_writing_help()
+            JAIMemory.save_conversation(client_id, original_message, response)
+            return response
         
         # ========== DEFAULT FALLBACK ==========
         fallbacks = [
@@ -394,4 +317,4 @@ class JAIPersonality:
         
         response = random.choice(fallbacks)
         JAIMemory.save_conversation(client_id, original_message, response)
-return response
+        return response
