@@ -17,7 +17,7 @@ from jai_grammar_long import JAIGrammarLong
 from jai_memory import JAIMemory
 from jai_services import WebSearch, Weather, Calculator, TimeService
 from jai_document import DocumentHandler
-# from jai_image import ImageHandler, ImageCommandHandler  # COMMENTED OUT - Add back later
+# from jai_image import ImageHandler, ImageCommandHandler  # COMMENTED OUT
 
 logger = logging.getLogger(__name__)
 
@@ -42,16 +42,10 @@ class JAIPersonality:
                     text = DocumentHandler.extract_text_from_base64(base64_content, filename)
                     
                     if text and len(text.strip()) > 10:
-                        # Store document
                         simplified = DocumentHandler.simplify_document(text, filename)
                         DocumentHandler.store_document(client_id, filename, text, simplified)
-                        
-                        # Generate LONG summary automatically
                         long_summary = DocumentHandler.generate_long_summary(text, filename)
-                        
-                        # Save to memory
                         JAIMemory.save_conversation(client_id, original_message, f"Document uploaded: {filename}")
-                        
                         return f"✅ **Document uploaded successfully!**\n\n{long_summary}"
                     else:
                         return "❌ File appears empty or unreadable. Please check the file and try again."
@@ -60,12 +54,6 @@ class JAIPersonality:
             except Exception as e:
                 logger.error(f"Document upload error: {e}")
                 return f"❌ Error: {str(e)}"
-        
-        # ========== IMAGE UPLOAD COMMAND - DISABLED ==========
-        # if ImageCommandHandler.is_image_command(msg):
-        #     result = ImageCommandHandler.process_upload(message, client_id)
-        #     JAIMemory.save_conversation(client_id, original_message, result)
-        #     return result
         
         # ========== DOCUMENT INTELLIGENCE ==========
         if DocumentHandler.has_document(client_id):
@@ -76,21 +64,38 @@ class JAIPersonality:
                     JAIMemory.save_conversation(client_id, original_message, doc_answer)
                     return doc_answer
         
-        # ========== IMAGE INTELLIGENCE - DISABLED ==========
-        # if ImageHandler.has_image(client_id):
-        #     if msg == 'clear image' or msg == 'delete image':
-        #         ImageHandler.clear_image(client_id)
-        #         response = "🖼️ Image cleared. Upload a new one anytime!"
-        #         JAIMemory.save_conversation(client_id, original_message, response)
-        #         return response
-        #     
-        #     image_answer = ImageHandler.answer_question(client_id, original_message)
-        #     if image_answer:
-        #         JAIMemory.save_conversation(client_id, original_message, image_answer)
-        #         return image_answer
+        # ========== MEMORY AWARENESS QUESTIONS (HIGH PRIORITY) ==========
+        # Handle questions about memory/capabilities
+        user_facts = JAIMemory.get_user_facts(client_id)
+        user_name = user_facts.get("name", None)
         
-        # ========== CURRENCY CONVERSION (HIGH PRIORITY) ==========
-        # This must come BEFORE general knowledge to catch currency queries
+        # Questions about remembering
+        if any(word in msg for word in ['remember', 'forget', 'memory', 'recall', 'know my name']):
+            if user_name:
+                if 'remember' in msg or 'recall' in msg:
+                    return f"Yes, I remember you, {user_name}! 😊 I store your name and facts in my memory. Even if you leave and come back, I'll still know who you are. Your memory is saved with your client ID."
+                elif 'forget' in msg:
+                    return f"I would never forget you, {user_name}! 😊 But if you want me to forget, you can clear your memory by asking me to 'forget me'."
+                else:
+                    return f"Yes, {user_name}! I have memory. I remember your name and what you tell me. Your data is saved and will be here when you return. 🧠"
+            else:
+                return "I have memory capabilities! I can remember your name, preferences, and important facts you tell me. Just tell me your name and I'll remember it! 🧠"
+        
+        # Explicit forget command
+        if msg == 'forget me' or msg == 'clear memory' or msg == 'delete my data':
+            JAIMemory.clear_user_data(client_id)
+            return "✅ I've cleared your memory. I won't remember our previous conversations. Starting fresh! 👋"
+        
+        # Questions about memory capability
+        if any(word in msg for word in ['do you have memory', 'can you remember', 'what do you remember']):
+            if user_name:
+                facts = JAIMemory.get_user_facts(client_id)
+                fact_list = "\n".join([f"• {k}: {v}" for k, v in facts.items()]) if facts else "Nothing yet"
+                return f"🧠 **Yes, I have memory!**\n\nI remember:\n{fact_list}\n\nI also remember our conversation history. Ask me 'forget me' if you want me to clear my memory."
+            else:
+                return "🧠 **Yes, I have memory!**\n\nI can remember:\n• Your name\n• Your preferences\n• Important facts you tell me\n• Our conversation history\n\nJust tell me something like 'My name is Joshua' and I'll remember it forever!"
+        
+        # ========== CURRENCY CONVERSION ==========
         currency_result = JAICurrency.detect_and_convert(original_message)
         if currency_result:
             JAIMemory.save_conversation(client_id, original_message, currency_result)
@@ -119,11 +124,7 @@ class JAIPersonality:
                 return calc_result
         
         # ========== CHECK FOR GENERAL KNOWLEDGE QUESTIONS ==========
-        # More flexible question detection - handles multiple question marks, poor formatting, etc.
-        
-        # Clean the message for better detection
         clean_msg = msg.strip()
-        # Remove excessive question marks (more than 2)
         clean_msg = re.sub(r'\?{3,}', '?', clean_msg)
         
         general_knowledge_patterns = [
@@ -141,29 +142,21 @@ class JAIPersonality:
         ]
         
         is_general_knowledge = False
-        
-        # Check for question patterns first
         for pattern in general_knowledge_patterns:
             if re.search(pattern, clean_msg):
                 is_general_knowledge = True
                 logger.info(f"General knowledge detected: {pattern}")
                 break
         
-        # Check for question mark (anywhere in the message, not just at end)
         has_question_mark = '?' in original_message or '？' in original_message
-        
-        # Check if message looks like a question (starts with question words)
         question_start_words = ['what', 'who', 'where', 'when', 'why', 'how', 'which', 'whose', 'whom']
         starts_with_question = any(clean_msg.startswith(word) for word in question_start_words)
         
         if has_question_mark or starts_with_question:
             is_general_knowledge = True
-            logger.info(f"General knowledge detected: question pattern")
         
-        # Also check if the message is very short and looks like a question (e.g., "python?" or "who?")
         if len(clean_msg) < 30 and has_question_mark:
             is_general_knowledge = True
-            logger.info(f"General knowledge detected: short question pattern")
         
         if is_general_knowledge:
             logger.info(f"Searching online for: {original_message}")
@@ -182,7 +175,7 @@ class JAIPersonality:
             JAIMemory.save_conversation(client_id, original_message, date_response)
             return date_response
         
-        # ========== MEMORY ==========
+        # ========== MEMORY (FACTS & RESPONSES) ==========
         next_time_response = JAIMemory.get_next_time_say_response(client_id, original_message)
         if next_time_response:
             JAIMemory.save_conversation(client_id, original_message, next_time_response)
@@ -198,20 +191,17 @@ class JAIPersonality:
         if learned_facts:
             for fact_key, fact_value in learned_facts:
                 if fact_key == "name":
-                    response = f"Nice to meet you, {fact_value}! 😊"
+                    response = f"Nice to meet you, {fact_value}! 😊 I'll remember your name."
                     JAIMemory.save_conversation(client_id, original_message, response)
                     return response
                 elif fact_key == "age":
-                    response = f"Got it! You're {fact_value} years old!"
+                    response = f"Got it! You're {fact_value} years old! I'll remember that."
                     JAIMemory.save_conversation(client_id, original_message, response)
                     return response
                 elif fact_key == "location":
-                    response = f"Cool! {fact_value} is a great place!"
+                    response = f"Cool! {fact_value} is a great place! I've saved that."
                     JAIMemory.save_conversation(client_id, original_message, response)
                     return response
-        
-        user_facts = JAIMemory.get_user_facts(client_id)
-        user_name = user_facts.get("name", None)
         
         # ========== LEARNING PATTERNS ==========
         next_time_pattern = re.search(r'next time .+? say[s]? ["\']?(.+?)["\']?\s+(?:say|respond with) ["\']?(.+?)["\']?', msg, re.IGNORECASE)
@@ -252,27 +242,27 @@ class JAIPersonality:
         
         if any(g in msg for g in ["hi", "hello", "hey", "howdy"]):
             if user_name:
-                response = f"Hello {user_name}! 😊 How can I help?"
+                response = f"Hello {user_name}! 😊 How can I help you today?"
             else:
-                response = "Hello! 😊 Ask me anything! I can search online, read documents, check weather, or convert currency."
+                response = "Hello! 😊 I'm K-LYNX AI++. What's your name? (Tell me 'My name is...')"
             JAIMemory.save_conversation(client_id, original_message, response)
             return response
         
         # ========== HOW ARE YOU ==========
         if any(h in msg for h in ["how are you", "how you doing"]):
-            response = "I'm doing great! Thanks for asking!"
+            response = "I'm doing great! Thanks for asking! How can I help you today?"
             JAIMemory.save_conversation(client_id, original_message, response)
             return response
         
         # ========== THANKS ==========
         if any(t in msg for t in ["thank", "thanks"]):
-            response = "You're welcome! 😊"
+            response = "You're welcome! 😊 Is there anything else I can help with?"
             JAIMemory.save_conversation(client_id, original_message, response)
             return response
         
         # ========== GOODBYE ==========
         if any(g in msg for g in ["bye", "goodbye", "see you"]):
-            response = "Goodbye! Take care! 👋"
+            response = f"Goodbye{', ' + user_name if user_name else ''}! Take care! 👋 I'll be here when you return."
             JAIMemory.save_conversation(client_id, original_message, response)
             return response
         
@@ -283,12 +273,12 @@ class JAIPersonality:
             return response
         
         # ========== CAPABILITIES ==========
-        if any(c in msg for c in ["what can you do", "your skills", "help"]):
+        if any(c in msg for c in ["what can you do", "your skills", "help", "capabilities"]):
             doc_status = ""
             if DocumentHandler.has_document(client_id):
                 doc = DocumentHandler.get_user_document(client_id)
                 doc_status = f"\n\n📄 **Document loaded:** '{doc['filename']}'"
-            response = f"📚 **I can help with:**\n\n🔍 **Search online** - Ask any question\n📄 **Read documents** - Upload PDF/DOCX/TXT\n🌤️ **Weather** - Current conditions\n💰 **Currency** - Live exchange rates\n🧮 **Calculate** - Math problems\n💾 **Memory** - I learn from you!{doc_status}"
+            response = f"📚 **I can help with:**\n\n🔍 **Search online** - Ask any question\n📄 **Read documents** - Upload PDF/DOCX/TXT\n🌤️ **Weather** - Current conditions\n💰 **Currency** - Live exchange rates\n🧮 **Calculate** - Math problems\n💾 **Memory** - I remember your name and facts!\n\n💡 Try asking: 'What is Python?' or '100 USD to KES'{doc_status}"
             JAIMemory.save_conversation(client_id, original_message, response)
             return response
         
@@ -297,7 +287,9 @@ class JAIPersonality:
             jokes = [
                 "Why don't scientists trust atoms? Because they make up everything! 😄",
                 "What do you call a fake noodle? An impasta! 🍝",
-                "Why did the scarecrow win an award? He was outstanding in his field! 🌾"
+                "Why did the scarecrow win an award? He was outstanding in his field! 🌾",
+                "What do you call a bear with no teeth? A gummy bear! 🐻",
+                "Why don't eggs tell jokes? They'd crack each other up! 🥚"
             ]
             response = random.choice(jokes)
             JAIMemory.save_conversation(client_id, original_message, response)
