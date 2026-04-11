@@ -17,6 +17,7 @@ from jai_grammar_long import JAIGrammarLong
 from jai_memory import JAIMemory
 from jai_services import WebSearch, Weather, Calculator, TimeService
 from jai_document import DocumentHandler
+from jai_professional_writer import ProfessionalWriterHandler
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +92,6 @@ class JAIPersonality:
                     return response
         
         # ========== NAME QUESTION DETECTION (HIGHEST PRIORITY) ==========
-        # This MUST come before general knowledge search
         name_question_patterns = [
             r'what(\'s| is)? my name',
             r'do you know my name',
@@ -138,6 +138,13 @@ class JAIPersonality:
             response = "✅ I've cleared your memory. I won't remember our previous conversations. Starting fresh! 👋"
             JAIMemory.save_conversation(client_id, original_message, response)
             return response
+        
+        # ========== PROFESSIONAL WRITER ==========
+        if ProfessionalWriterHandler.is_writing_request(original_message):
+            writing_response = ProfessionalWriterHandler.handle_writing_request(original_message)
+            if writing_response:
+                JAIMemory.save_conversation(client_id, original_message, writing_response)
+                return writing_response
         
         # ========== EXTRACT OTHER USER FACTS (age, location, etc.) ==========
         learned_facts = JAIMemory.extract_and_save_user_fact(client_id, original_message)
@@ -318,7 +325,7 @@ class JAIPersonality:
             if DocumentHandler.has_document(client_id):
                 doc = DocumentHandler.get_user_document(client_id)
                 doc_status = f"\n\n📄 **Document loaded:** '{doc['filename']}'"
-            response = f"📚 **I can help with:**\n\n🔍 **Search online** - Ask any question\n📄 **Read documents** - Upload PDF/DOCX/TXT\n🌤️ **Weather** - Current conditions\n💰 **Currency** - Live exchange rates\n🧮 **Calculate** - Math problems\n💾 **Memory** - I remember your name and facts!\n\n💡 Try asking: 'What is Python?' or '100 USD to KES'{doc_status}"
+            response = f"📚 **I can help with:**\n\n🔍 **Search online** - Ask any question\n📄 **Read documents** - Upload PDF/DOCX/TXT\n✍️ **Professional writing** - Emails, proposals, cover letters\n🌤️ **Weather** - Current conditions\n💰 **Currency** - Live exchange rates\n🧮 **Calculate** - Math problems\n💾 **Memory** - I remember your name and facts!\n\n💡 Try asking: 'What is Python?', 'Write an email to John', or '100 USD to KES'{doc_status}"
             JAIMemory.save_conversation(client_id, original_message, response)
             return response
         
@@ -363,6 +370,13 @@ class JAIPersonality:
             JAIMemory.save_conversation(client_id, original_message, conv)
             return conv
         
+        # ========== PROFESSIONAL WRITER FALLBACK ==========
+        # If user mentions writing but not caught by detection
+        if any(w in msg for w in ['write', 'draft', 'compose', 'email', 'letter', 'proposal']):
+            response = ProfessionalWriterHandler.get_writing_help()
+            JAIMemory.save_conversation(client_id, original_message, response)
+            return response
+        
         # ========== DEFAULT FALLBACK ==========
         fallbacks = [
             "That's interesting. Tell me more!",
@@ -375,5 +389,4 @@ class JAIPersonality:
             fallbacks = [f"What's on your mind, {user_name}?", f"Tell me more, {user_name}."]
         
         response = random.choice(fallbacks)
-        JAIMemory.save_conversation(client_id, original_message, response)
-        return response
+        
