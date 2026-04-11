@@ -121,7 +121,7 @@ class JAICurrency:
         'try': 'TRY', 'lira': 'TRY',
         
         # African currencies
-        'ngn': 'NGN', 'naira': 'NGN', 'nigerian naira': 'NGN',
+        'ngn': 'NGN', 'naira': 'NGN', 'nigerian naira': 'NGN', 'nigerian': 'NGN',
         'zar': 'ZAR', 'rand': 'ZAR', 'rands': 'ZAR', 'south african rand': 'ZAR', 'south african rands': 'ZAR', 'south african': 'ZAR',
         'kes': 'KES', 'shilling': 'KES', 'kenyan shilling': 'KES', 'kenya shilling': 'KES', 'ksh': 'KES',
         'ghs': 'GHS', 'cedi': 'GHS', 'ghanaian cedi': 'GHS',
@@ -217,16 +217,12 @@ class JAICurrency:
         
         msg_lower = message.lower().strip()
         
-        # Debug log
-        logger.info(f"Currency check: {msg_lower}")
-        
-        # Extract amount (handle both "500" and "500.50")
+        # Extract amount
         amount_match = re.search(r'(\d+(?:\.\d+)?)', msg_lower)
         if not amount_match:
             return None
         
         amount = float(amount_match.group(1))
-        logger.info(f"Found amount: {amount}")
         
         # Find all currency codes mentioned in the message
         found_currencies = []
@@ -235,7 +231,6 @@ class JAICurrency:
             if alias in msg_lower:
                 if code not in found_currencies:
                     found_currencies.append(code)
-                    logger.info(f"Found currency via alias '{alias}': {code}")
         
         # Also check for direct 3-letter codes
         code_pattern = r'\b([A-Z]{3})\b'
@@ -243,9 +238,6 @@ class JAICurrency:
         for code in code_matches:
             if code in cls.CURRENCIES and code not in found_currencies:
                 found_currencies.append(code)
-                logger.info(f"Found currency via direct code: {code}")
-        
-        logger.info(f"All found currencies: {found_currencies}")
         
         if len(found_currencies) < 2:
             return None
@@ -257,31 +249,42 @@ class JAICurrency:
         # Look for "to" or "in" keyword
         to_keywords = ['to', 'in', 'into', 'for']
         to_pos = len(msg_lower)
+        found_keyword = None
         
         for kw in to_keywords:
             pos = msg_lower.find(kw)
             if pos != -1 and pos < to_pos:
                 to_pos = pos
+                found_keyword = kw
         
-        if to_pos < len(msg_lower):
+        if found_keyword:
+            # Split by the keyword position
             before = msg_lower[:to_pos]
-            after = msg_lower[to_pos:]
+            after = msg_lower[to_pos + len(found_keyword):]
             
+            # The currency before the keyword is the FROM currency
+            # The currency after the keyword is the TO currency
             for code in found_currencies:
                 code_lower = code.lower()
-                if code_lower in before and from_curr is None:
+                if code_lower in before:
                     from_curr = code
-                    logger.info(f"From currency (before 'to'): {from_curr}")
-                elif code_lower in after and to_curr is None:
+                elif code_lower in after:
                     to_curr = code
-                    logger.info(f"To currency (after 'to'): {to_curr}")
         
-        # If no "to" keyword found, use first as from, last as to
+        # If no keyword found or still missing currencies, use position in message
         if not from_curr or not to_curr:
-            if len(found_currencies) >= 2:
-                from_curr = found_currencies[0]
-                to_curr = found_currencies[-1]
-                logger.info(f"No 'to' keyword. Using first={from_curr}, last={to_curr}")
+            # Find positions of each currency in the message
+            currency_positions = []
+            for code in found_currencies:
+                pos = msg_lower.find(code.lower())
+                currency_positions.append((pos, code))
+            
+            # Sort by position (first occurrence in message)
+            currency_positions.sort(key=lambda x: x[0])
+            
+            if len(currency_positions) >= 2:
+                from_curr = currency_positions[0][1]  # First mentioned = FROM
+                to_curr = currency_positions[-1][1]   # Last mentioned = TO
         
         if from_curr and to_curr and from_curr != to_curr:
             result = cls.convert(amount, from_curr, to_curr)
@@ -290,13 +293,7 @@ class JAICurrency:
                 formatted_result = cls.format(result, to_curr)
                 rate = cls.convert(1, from_curr, to_curr)
                 
-                response = f"💱 {formatted_amount} = {formatted_result}\n\n📊 Rate: 1 {from_curr} = {rate:,.4f} {to_curr}"
-                logger.info(f"Conversion successful: {response}")
-                return response
-            else:
-                logger.warning(f"Conversion failed for {from_curr} to {to_curr}")
-        else:
-            logger.warning(f"Missing currencies: from={from_curr}, to={to_curr}")
+                return f"💱 {formatted_amount} = {formatted_result}\n\n📊 Rate: 1 {from_curr} = {rate:,.4f} {to_curr}"
         
         return None
     
