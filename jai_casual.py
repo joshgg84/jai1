@@ -8,9 +8,55 @@ class JAICasual:
     """Handles casual user statements and everyday conversation"""
     
     @staticmethod
-    def get_casual_response(message):
+    def get_casual_response(message, user_name=None):
         """Generate response for casual user statements"""
         msg = message.lower()
+        
+        # ========== GREETINGS ==========
+        if any(g in msg for g in ["good morning", "morning"]):
+            return f"Good morning{', ' + user_name if user_name else ''}! 🌅"
+        
+        if any(g in msg for g in ["good afternoon", "afternoon"]):
+            return f"Good afternoon{', ' + user_name if user_name else ''}! 🌞"
+        
+        if any(g in msg for g in ["good evening", "evening"]):
+            return f"Good evening{', ' + user_name if user_name else ''}! 🌙"
+        
+        if any(g in msg for g in ["good night", "night"]):
+            return "Good night! 🌙"
+        
+        if any(g in msg for g in ["hi", "hello", "hey", "howdy"]):
+            if user_name:
+                return f"Hello {user_name}! 😊 How can I help you today?"
+            return "Hello! 😊 I'm K-LYNX AI++. What's your name? (Tell me 'My name is...')"
+        
+        # ========== HOW ARE YOU ==========
+        if any(h in msg for h in ["how are you", "how you doing", "how's it going", "how are things"]):
+            responses = [
+                "I'm doing great! Thanks for asking! How can I help you today?",
+                "I'm fantastic! 😊 What's on your mind?",
+                "I'm doing well, thank you! How about you?",
+                "All good here! What can I do for you today?"
+            ]
+            return random.choice(responses)
+        
+        # ========== THANKS ==========
+        if any(t in msg for t in ["thank", "thanks", "appreciate", "thx", "tnx"]):
+            responses = [
+                "You're welcome! 😊 Is there anything else I can help with?",
+                "My pleasure! Happy to help. What else do you need?",
+                "Anytime! 😊 That's what I'm here for.",
+                "You're welcome! Feel free to ask me anything else."
+            ]
+            return random.choice(responses)
+        
+        # ========== GOODBYE ==========
+        if any(g in msg for g in ["bye", "goodbye", "see you", "later", "catch you", "peace"]):
+            return f"Goodbye{', ' + user_name if user_name else ''}! Take care! 👋 I'll be here when you return."
+        
+        # ========== CREATOR ==========
+        if any(c in msg for c in ["who made you", "who created you", "your creator", "who built you"]):
+            return "I was created by Joshua Giwa from Yukuben Village, Nigeria! 🇳🇬"
         
         # ========== CAPABILITY CONFIRMATION ==========
         if any(c in msg for c in ["can you", "do you", "are you able", "you able"]):
