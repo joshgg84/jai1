@@ -1,10 +1,9 @@
 """JAI - Professional Writer Module
-Handles professional writing tasks: emails, proposals, reports, cover letters, and business documents.
+Handles professional writing tasks: emails, proposals, reports, cover letters.
 """
 
 import re
 import logging
-import random
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -258,7 +257,6 @@ Sincerely,
         context.setdefault('timeline', '[Proposed timeline]')
         context.setdefault('investment', '[Cost/budget details]')
         
-        # Generate subject and body
         subject = template['subject'].format(**context)
         body = template['body'].format(**context)
         
@@ -341,6 +339,40 @@ Sincerely,
 ✨ *Need revisions? Tell me what to adjust!*"""
     
     @staticmethod
+    def generate_resignation_letter(context):
+        """Generate a professional resignation letter"""
+        context.setdefault('date', datetime.now().strftime("%B %d, %Y"))
+        context.setdefault('recipient', '[Manager Name]')
+        context.setdefault('position', '[Your Position]')
+        context.setdefault('company', '[Company Name]')
+        context.setdefault('last_day', '[Last Working Day]')
+        context.setdefault('reason', 'personal reasons')
+        context.setdefault('appreciation', 'I am grateful for the opportunities I have had while working here.')
+        
+        letter = f"""📄 **RESIGNATION LETTER**
+
+{context['date']}
+
+Dear {context['recipient']},
+
+Please accept this letter as formal notification of my resignation from the position of {context['position']} at {context['company']}. My last day will be {context['last_day']}.
+
+I have decided to leave due to {context['reason']}. {context['appreciation']}
+
+I will ensure a smooth transition of my responsibilities before my departure. I am committed to helping train any replacement or document my current projects.
+
+Thank you for the opportunities for professional and personal development during my time here.
+
+Sincerely,
+[Your Signature]
+[Your Printed Name]
+
+---
+✨ *Need to customize the reason or add anything? Let me know!*"""
+        
+        return letter
+    
+    @staticmethod
     def generate_response(task, user_message):
         """Generate a response based on detected writing task"""
         msg_lower = user_message.lower()
@@ -349,7 +381,7 @@ Sincerely,
         context = {}
         
         # Extract recipient name
-        recipient_match = re.search(r'to\s+([A-Za-z\s]+?)(?:\s+about|\s+regarding|$)', msg_lower)
+        recipient_match = re.search(r'(?:to|for)\s+([A-Za-z\s]+?)(?:\s+about|\s+regarding|$|\.)', msg_lower)
         if recipient_match:
             context['recipient'] = recipient_match.group(1).strip().title()
         
@@ -370,9 +402,7 @@ Sincerely,
         if company_match:
             context['company_name'] = company_match.group(1).strip()
         
-        # Generate appropriate response
         if task == 'email':
-            # Determine email type
             if 'thank' in msg_lower:
                 email_type = 'thank_you'
             elif 'follow' in msg_lower or 'update' in msg_lower:
@@ -402,6 +432,9 @@ Sincerely,
         elif task == 'report':
             return ProfessionalWriter.generate_report(context)
         
+        elif task == 'resignation':
+            return ProfessionalWriter.generate_resignation_letter(context)
+        
         elif task == 'thank_you':
             context['details'] = "Your support and consideration mean a great deal to me."
             return ProfessionalWriter.generate_email('thank_you', context)
@@ -423,42 +456,8 @@ Sincerely,
             context['details'] = "I believe there may be opportunities for collaboration between us."
             return ProfessionalWriter.generate_email('introduction', context)
         
-        elif task == 'resignation':
-            return ProfessionalWriter.generate_resignation_letter(context)
-        
         else:
             return ProfessionalWriter.get_writing_help()
-    
-    @staticmethod
-    def generate_resignation_letter(context):
-        """Generate a professional resignation letter"""
-        context.setdefault('date', datetime.now().strftime("%B %d, %Y"))
-        context.setdefault('recipient', '[Manager Name]')
-        context.setdefault('position', '[Your Position]')
-        context.setdefault('company', '[Company Name]')
-        context.setdefault('last_day', '[Last Working Day]')
-        context.setdefault('reason', 'personal reasons')
-        context.setdefault('appreciation', 'I am grateful for the opportunities I have had while working here.')
-        
-        letter = f"""📄 **RESIGNATION LETTER**
-
-{context['date']}
-
-Dear {context['recipient']},
-
-Please accept this letter as formal notification of my resignation from the position of {context['position']} at {context['company']}. My last day will be {context['last_day']}.
-
-I have decided to leave due to {context['reason']}. {context['appreciation']}
-
-I will ensure a smooth transition of my responsibilities before my departure. I am committed to helping train any replacement or document my current projects.
-
-Thank you for the opportunities for professional and personal development during my time here.
-
-Sincerely,
-[Your Signature]
-[Your Printed Name]"""
-        
-        return letter
     
     @staticmethod
     def get_writing_help():
@@ -467,21 +466,11 @@ Sincerely,
 
 I can help you write:
 
-📧 **Emails**
-• Business emails
-• Thank you notes
-• Follow-up messages
-• Apology letters
-• Meeting requests
-• Introduction emails
-
+📧 **Emails** - Business, thank you, follow-up, apology, meeting requests
 📄 **Cover Letters** - Job applications
-
 📋 **Proposals** - Business proposals
-
 📊 **Reports** - Professional reports
-
-✉️ **Resignation Letters**
+✉️ **Resignation Letters** - Professional resignation
 
 **Try saying:**
 • "Write a business email to John about our project"
@@ -490,7 +479,7 @@ I can help you write:
 • "Write a thank you email to my team"
 • "Create a resignation letter"
 
-What would you like me to help you write today?"""
+What would you like me to write today?"""
 
 
 class ProfessionalWriterHandler:
@@ -504,23 +493,20 @@ class ProfessionalWriterHandler:
         if task:
             return ProfessionalWriter.generate_response(task, user_message)
         
-        # Check for explicit writing help request
-        if any(word in message.lower() for word in ['write', 'draft', 'compose', 'create a']):
-            if any(word in message.lower() for word in ['email', 'letter', 'proposal', 'report', 'cover']):
-                task, user_message = 'email', message
-                return ProfessionalWriter.generate_response(task, user_message)
-        
         return None
     
     @staticmethod
     def is_writing_request(message):
         """Check if message is a writing request"""
         writing_indicators = [
-            'write an email', 'draft an email', 'compose an email',
-            'cover letter', 'job application',
-            'write a proposal', 'draft a proposal',
-            'write a report', 'draft a report',
-            'resignation letter', 'thank you email', 'follow up email'
+            'write a', 'draft a', 'compose a', 'create a',
+            'email', 'letter', 'proposal', 'report', 'cover letter',
+            'resignation', 'thank you note', 'apology', 'meeting request'
         ]
         msg_lower = message.lower()
         return any(indicator in msg_lower for indicator in writing_indicators)
+    
+    @staticmethod
+    def get_writing_help():
+        """Get writing help message"""
+        return ProfessionalWriter.get_writing_help()
