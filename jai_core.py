@@ -69,7 +69,6 @@ class JAIPersonality:
         user_name = user_facts.get("name", None)
         
         # ========== NAME EXTRACTION (BEFORE ANYTHING ELSE) ==========
-        # Check if user is telling us their name
         name_extraction_patterns = [
             r'my name is\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)',
             r'i am\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)',
@@ -82,7 +81,6 @@ class JAIPersonality:
             name_match = re.search(pattern, msg, re.IGNORECASE)
             if name_match:
                 extracted_name = name_match.group(1).strip().title()
-                # Validate name (only letters, not too short, not common words)
                 common_words = ['yes', 'no', 'ok', 'okay', 'good', 'bad', 'fine', 'great', 'awesome', 'hello', 'hi']
                 if extracted_name.isalpha() and len(extracted_name) >= 2 and extracted_name.lower() not in common_words:
                     JAIMemory.save_user_fact(client_id, 'name', extracted_name)
@@ -91,7 +89,7 @@ class JAIPersonality:
                     JAIMemory.save_conversation(client_id, original_message, response)
                     return response
         
-        # ========== NAME QUESTION DETECTION (HIGHEST PRIORITY) ==========
+        # ========== NAME QUESTION DETECTION ==========
         name_question_patterns = [
             r'what(\'s| is)? my name',
             r'do you know my name',
@@ -139,8 +137,21 @@ class JAIPersonality:
             JAIMemory.save_conversation(client_id, original_message, response)
             return response
         
-        # ========== PROFESSIONAL WRITER ==========
-        if ProfessionalWriterHandler.is_writing_request(original_message):
+        # ========== PROFESSIONAL WRITER (HIGH PRIORITY - BEFORE GENERAL KNOWLEDGE) ==========
+        # Check for any writing-related request
+        writing_keywords = [
+            'write', 'draft', 'compose', 'email', 'letter', 'proposal', 
+            'cover letter', 'report', 'memo', 'note', 'message',
+            'love letter', 'apology letter', 'thank you letter', 'resignation'
+        ]
+        
+        is_writing_request = False
+        for keyword in writing_keywords:
+            if keyword in msg:
+                is_writing_request = True
+                break
+        
+        if is_writing_request:
             writing_response = ProfessionalWriterHandler.handle_writing_request(original_message)
             if writing_response:
                 JAIMemory.save_conversation(client_id, original_message, writing_response)
@@ -325,7 +336,7 @@ class JAIPersonality:
             if DocumentHandler.has_document(client_id):
                 doc = DocumentHandler.get_user_document(client_id)
                 doc_status = f"\n\n📄 **Document loaded:** '{doc['filename']}'"
-            response = f"📚 **I can help with:**\n\n🔍 **Search online** - Ask any question\n📄 **Read documents** - Upload PDF/DOCX/TXT\n✍️ **Professional writing** - Emails, proposals, cover letters\n🌤️ **Weather** - Current conditions\n💰 **Currency** - Live exchange rates\n🧮 **Calculate** - Math problems\n💾 **Memory** - I remember your name and facts!\n\n💡 Try asking: 'What is Python?', 'Write an email to John', or '100 USD to KES'{doc_status}"
+            response = f"📚 **I can help with:**\n\n🔍 **Search online** - Ask any question\n📄 **Read documents** - Upload PDF/DOCX/TXT\n✍️ **Professional writing** - Emails, letters, proposals, cover letters\n🌤️ **Weather** - Current conditions\n💰 **Currency** - Live exchange rates\n🧮 **Calculate** - Math problems\n💾 **Memory** - I remember your name and facts!\n\n💡 Try asking: 'Write an email to John', 'What is Python?', or '100 USD to KES'{doc_status}"
             JAIMemory.save_conversation(client_id, original_message, response)
             return response
         
@@ -370,13 +381,6 @@ class JAIPersonality:
             JAIMemory.save_conversation(client_id, original_message, conv)
             return conv
         
-        # ========== PROFESSIONAL WRITER FALLBACK ==========
-        # If user mentions writing but not caught by detection
-        if any(w in msg for w in ['write', 'draft', 'compose', 'email', 'letter', 'proposal']):
-            response = ProfessionalWriterHandler.get_writing_help()
-            JAIMemory.save_conversation(client_id, original_message, response)
-            return response
-        
         # ========== DEFAULT FALLBACK ==========
         fallbacks = [
             "That's interesting. Tell me more!",
@@ -389,4 +393,5 @@ class JAIPersonality:
             fallbacks = [f"What's on your mind, {user_name}?", f"Tell me more, {user_name}."]
         
         response = random.choice(fallbacks)
-        
+        JAIMemory.save_conversation(client_id, original_message, response)
+return response
