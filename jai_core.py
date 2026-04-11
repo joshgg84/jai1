@@ -17,7 +17,6 @@ from jai_grammar_long import JAIGrammarLong
 from jai_memory import JAIMemory
 from jai_services import WebSearch, Weather, Calculator, TimeService
 from jai_document import DocumentHandler
-# from jai_image import ImageHandler, ImageCommandHandler  # COMMENTED OUT
 
 logger = logging.getLogger(__name__)
 
@@ -64,25 +63,48 @@ class JAIPersonality:
                     JAIMemory.save_conversation(client_id, original_message, doc_answer)
                     return doc_answer
         
-        # ========== MEMORY - GET USER FACTS ==========
+        # ========== GET USER MEMORY FACTS ==========
         user_facts = JAIMemory.get_user_facts(client_id)
         user_name = user_facts.get("name", None)
         
-        # ========== QUESTIONS ABOUT USER'S NAME / IDENTITY (HIGHEST PRIORITY) ==========
-        # Check if user is asking about their own name
+        # ========== NAME EXTRACTION (BEFORE ANYTHING ELSE) ==========
+        # Check if user is telling us their name
+        name_extraction_patterns = [
+            r'my name is\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)',
+            r'i am\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)',
+            r'i\'m\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)',
+            r'call me\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)',
+            r'name is\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)'
+        ]
+        
+        for pattern in name_extraction_patterns:
+            name_match = re.search(pattern, msg, re.IGNORECASE)
+            if name_match:
+                extracted_name = name_match.group(1).strip().title()
+                # Validate name (only letters, not too short, not common words)
+                common_words = ['yes', 'no', 'ok', 'okay', 'good', 'bad', 'fine', 'great', 'awesome', 'hello', 'hi']
+                if extracted_name.isalpha() and len(extracted_name) >= 2 and extracted_name.lower() not in common_words:
+                    JAIMemory.save_user_fact(client_id, 'name', extracted_name)
+                    user_name = extracted_name
+                    response = f"Nice to meet you, {extracted_name}! 😊 I'll remember your name."
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return response
+        
+        # ========== NAME QUESTION DETECTION (HIGHEST PRIORITY) ==========
+        # This MUST come before general knowledge search
         name_question_patterns = [
             r'what(\'s| is)? my name',
             r'do you know my name',
             r'remember my name',
             r'who am i',
-            r'my name is',
-            r'what do you call me'
+            r'what do you call me',
+            r'my name'
         ]
         
         for pattern in name_question_patterns:
             if re.search(pattern, msg):
                 if user_name:
-                    response = f"I remember you, {user_name}! 😊 Your name is {user_name}."
+                    response = f"Your name is {user_name}! 😊 I remember you."
                     JAIMemory.save_conversation(client_id, original_message, response)
                     return response
                 else:
@@ -91,7 +113,7 @@ class JAIPersonality:
                     return response
         
         # ========== MEMORY AWARENESS QUESTIONS ==========
-        if any(word in msg for word in ['remember', 'forget', 'memory', 'recall', 'know my name', 'do you have memory']):
+        if any(word in msg for word in ['remember', 'forget', 'memory', 'recall', 'do you have memory']):
             if user_name:
                 if 'remember' in msg or 'recall' in msg:
                     response = f"Yes, I remember you, {user_name}! 😊 I store your name and facts in my memory. Even if you leave and come back, I'll still know who you are."
@@ -116,6 +138,19 @@ class JAIPersonality:
             response = "✅ I've cleared your memory. I won't remember our previous conversations. Starting fresh! 👋"
             JAIMemory.save_conversation(client_id, original_message, response)
             return response
+        
+        # ========== EXTRACT OTHER USER FACTS (age, location, etc.) ==========
+        learned_facts = JAIMemory.extract_and_save_user_fact(client_id, original_message)
+        if learned_facts:
+            for fact_key, fact_value in learned_facts:
+                if fact_key == "age":
+                    response = f"Got it! You're {fact_value} years old! I'll remember that."
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return response
+                elif fact_key == "location":
+                    response = f"Cool! {fact_value} is a great place! I've saved that."
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return response
         
         # ========== CURRENCY CONVERSION ==========
         currency_result = JAICurrency.detect_and_convert(original_message)
@@ -155,33 +190,16 @@ class JAIPersonality:
             JAIMemory.save_conversation(client_id, original_message, date_response)
             return date_response
         
-        # ========== MEMORY (FACTS & RESPONSES) ==========
-        next_time_response = JAIMemory.get_next_time_say_response(client_id, original_message)
-        if next_time_response:
-            JAIMemory.save_conversation(client_id, original_message, next_time_response)
-            return next_time_response
-        
+        # ========== LEARNED RESPONSES (TEACH FUNCTIONALITY) ==========
         taught_response = JAIMemory.get_taught_response(client_id, original_message)
         if taught_response:
             JAIMemory.save_conversation(client_id, original_message, taught_response)
             return taught_response
         
-        # Extract user facts
-        learned_facts = JAIMemory.extract_and_save_user_fact(client_id, original_message)
-        if learned_facts:
-            for fact_key, fact_value in learned_facts:
-                if fact_key == "name":
-                    response = f"Nice to meet you, {fact_value}! 😊 I'll remember your name."
-                    JAIMemory.save_conversation(client_id, original_message, response)
-                    return response
-                elif fact_key == "age":
-                    response = f"Got it! You're {fact_value} years old! I'll remember that."
-                    JAIMemory.save_conversation(client_id, original_message, response)
-                    return response
-                elif fact_key == "location":
-                    response = f"Cool! {fact_value} is a great place! I've saved that."
-                    JAIMemory.save_conversation(client_id, original_message, response)
-                    return response
+        next_time_response = JAIMemory.get_next_time_say_response(client_id, original_message)
+        if next_time_response:
+            JAIMemory.save_conversation(client_id, original_message, next_time_response)
+            return next_time_response
         
         # ========== CHECK FOR GENERAL KNOWLEDGE QUESTIONS ==========
         clean_msg = msg.strip()
