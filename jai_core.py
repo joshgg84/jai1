@@ -69,7 +69,65 @@ class JAIPersonality:
         user_facts = JAIMemory.get_user_facts(client_id)
         user_name = user_facts.get("name", None)
         
-        # ========== NAME EXTRACTION (BEFORE ANYTHING ELSE) ==========
+        # ========== EMOTION / STATE DETECTION (BEFORE NAME EXTRACTION) ==========
+        # This prevents "I'm confused" from being treated as a name
+        emotion_patterns = [
+            r'i\'m\s+(confused|tired|happy|sad|angry|excited|bored|scared|worried|stressed|calm|relaxed|frustrated|annoyed|pleased|grateful|thankful|sorry|glad|sick|healthy|fine|okay|good|great|awesome|amazing|wonderful|terrible|horrible|awful|lost|stuck|overwhelmed)',
+            r'i am\s+(confused|tired|happy|sad|angry|excited|bored|scared|worried|stressed|calm|relaxed|frustrated|annoyed|pleased|grateful|thankful|sorry|glad|sick|healthy|fine|okay|good|great|awesome|amazing|wonderful|terrible|horrible|awful|lost|stuck|overwhelmed)'
+        ]
+        
+        for pattern in emotion_patterns:
+            emotion_match = re.search(pattern, msg, re.IGNORECASE)
+            if emotion_match:
+                emotion = emotion_match.group(1).lower()
+                if emotion == 'confused':
+                    response = "I understand confusion can be frustrating. What part is confusing you? Let me help clarify! 😊"
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return response
+                elif emotion in ['tired', 'exhausted']:
+                    response = "Take a break if you need to. Rest is important! I'll be here when you come back. 😊"
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return response
+                elif emotion in ['happy', 'great', 'awesome', 'amazing', 'wonderful', 'excited']:
+                    response = f"That's wonderful to hear! 😊 What's making you feel this way?"
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return response
+                elif emotion in ['sad', 'down', 'unhappy']:
+                    response = "I'm sorry you're feeling this way. I'm here for you if you want to talk about it. 💙"
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return response
+                elif emotion in ['angry', 'frustrated', 'annoyed']:
+                    response = "I hear that you're frustrated. Take a deep breath. Want to talk about what's bothering you?"
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return response
+                elif emotion in ['grateful', 'thankful']:
+                    response = "That's beautiful. Gratitude changes everything. What are you grateful for today? 😊"
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return response
+                elif emotion in ['sorry', 'apologize']:
+                    response = "No need to apologize! 😊 We're just chatting. What's on your mind?"
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return response
+                else:
+                    response = f"I hear you. It's okay to feel {emotion}. Want to talk about it?"
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return response
+        
+        # ========== NAME EXTRACTION (WITH VALIDATION) ==========
+        # Words that should NEVER be saved as names
+        invalid_names = [
+            'yes', 'no', 'ok', 'okay', 'good', 'bad', 'fine', 'great', 'awesome', 
+            'hello', 'hi', 'hey', 'bye', 'thanks', 'thank', 'please', 'sorry',
+            'confused', 'tired', 'happy', 'sad', 'angry', 'excited', 'bored',
+            'what', 'where', 'when', 'why', 'how', 'who', 'which',
+            'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them',
+            'this', 'that', 'these', 'those', 'there', 'their', 'theyre',
+            'help', 'need', 'want', 'like', 'love', 'hate', 'feel', 'think',
+            'tell', 'ask', 'answer', 'respond', 'reply', 'say', 'talk', 'speak',
+            'write', 'read', 'see', 'look', 'watch', 'hear', 'listen',
+            'go', 'come', 'leave', 'stay', 'wait', 'stop', 'start', 'begin', 'end'
+        ]
+        
         name_extraction_patterns = [
             r'my name is\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)',
             r'i am\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)',
@@ -82,8 +140,10 @@ class JAIPersonality:
             name_match = re.search(pattern, msg, re.IGNORECASE)
             if name_match:
                 extracted_name = name_match.group(1).strip().title()
-                common_words = ['yes', 'no', 'ok', 'okay', 'good', 'bad', 'fine', 'great', 'awesome', 'hello', 'hi']
-                if extracted_name.isalpha() and len(extracted_name) >= 2 and extracted_name.lower() not in common_words:
+                # Validate name - must be letters, length >= 2, not in invalid list
+                if (extracted_name.isalpha() and 
+                    len(extracted_name) >= 2 and 
+                    extracted_name.lower() not in invalid_names):
                     JAIMemory.save_user_fact(client_id, 'name', extracted_name)
                     user_name = extracted_name
                     response = f"Nice to meet you, {extracted_name}! 😊 I'll remember your name."
@@ -96,8 +156,7 @@ class JAIPersonality:
             r'do you know my name',
             r'remember my name',
             r'who am i',
-            r'what do you call me',
-            r'my name'
+            r'what do you call me'
         ]
         
         for pattern in name_question_patterns:
@@ -316,5 +375,5 @@ class JAIPersonality:
             fallbacks = [f"What's on your mind, {user_name}?", f"Tell me more, {user_name}."]
         
         response = random.choice(fallbacks)
-        JAIMemory.save_conversation(client_id, original_message, response)
-        return response
+        JAIMemory.save_conersation(client_id, original_message, response)
+return response 
