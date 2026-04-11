@@ -96,36 +96,39 @@ class JAICurrency:
         'XAF': {'name': 'Central African CFA Franc', 'symbol': 'FCFA', 'flag': '🌍'}
     }
     
-    # Currency aliases
+    # Currency aliases (expanded for better detection)
     CURRENCY_ALIASES = {
-        'usd': 'USD', 'dollar': 'USD', 'dollars': 'USD', 'us dollars': 'USD',
+        # Major currencies
+        'usd': 'USD', 'dollar': 'USD', 'dollars': 'USD', 'us dollars': 'USD', 'usdollar': 'USD',
         'eur': 'EUR', 'euro': 'EUR', 'euros': 'EUR',
         'gbp': 'GBP', 'pound': 'GBP', 'pounds': 'GBP', 'sterling': 'GBP',
-        'jpy': 'JPY', 'yen': 'JPY', 'japanese yen': 'JPY',
+        'jpy': 'JPY', 'yen': 'JPY',
         'cny': 'CNY', 'yuan': 'CNY', 'renminbi': 'CNY',
-        'inr': 'INR', 'rupee': 'INR', 'indian rupee': 'INR',
-        'rub': 'RUB', 'ruble': 'RUB', 'russian ruble': 'RUB',
+        'inr': 'INR', 'rupee': 'INR',
+        'rub': 'RUB', 'ruble': 'RUB',
         'chf': 'CHF', 'swiss franc': 'CHF',
         'cad': 'CAD', 'canadian dollar': 'CAD',
         'aud': 'AUD', 'australian dollar': 'AUD',
         'nzd': 'NZD', 'new zealand dollar': 'NZD',
         'sgd': 'SGD', 'singapore dollar': 'SGD',
         'hkd': 'HKD', 'hong kong dollar': 'HKD',
-        'krw': 'KRW', 'won': 'KRW', 'south korean won': 'KRW',
-        'brl': 'BRL', 'real': 'BRL', 'brazilian real': 'BRL',
-        'mxn': 'MXN', 'peso': 'MXN', 'mexican peso': 'MXN',
-        'try': 'TRY', 'lira': 'TRY', 'turkish lira': 'TRY',
+        'krw': 'KRW', 'won': 'KRW',
+        'brl': 'BRL', 'real': 'BRL',
+        'mxn': 'MXN', 'peso': 'MXN',
+        'try': 'TRY', 'lira': 'TRY',
+        
+        # African currencies
         'ngn': 'NGN', 'naira': 'NGN', 'nigerian naira': 'NGN',
-        'zar': 'ZAR', 'rand': 'ZAR', 'south african rand': 'ZAR', 'rands': 'ZAR',
-        'kes': 'KES', 'shilling': 'KES', 'kenyan shilling': 'KES', 'ksh': 'KES',
+        'zar': 'ZAR', 'rand': 'ZAR', 'rands': 'ZAR', 'south african rand': 'ZAR', 'south african rands': 'ZAR',
+        'kes': 'KES', 'shilling': 'KES', 'kenyan shilling': 'KES', 'kenya shilling': 'KES', 'ksh': 'KES',
         'ghs': 'GHS', 'cedi': 'GHS', 'ghanaian cedi': 'GHS',
         'ugx': 'UGX', 'ugandan shilling': 'UGX',
         'tzs': 'TZS', 'tanzanian shilling': 'TZS',
         'bwp': 'BWP', 'pula': 'BWP', 'botswana pula': 'BWP',
         'egp': 'EGP', 'egyptian pound': 'EGP',
         'mad': 'MAD', 'dirham': 'MAD', 'moroccan dirham': 'MAD',
-        'xof': 'XOF', 'cfa': 'XOF', 'west african cfa': 'XOF',
-        'xaf': 'XAF', 'central african cfa': 'XAF'
+        'xof': 'XOF', 'cfa': 'XOF',
+        'xaf': 'XAF'
     }
     
     @classmethod
@@ -211,26 +214,14 @@ class JAICurrency:
         
         msg_lower = message.lower().strip()
         
-        # Pattern 1: "150dollars to ksh" (no space between number and currency)
-        number_currency_pattern = re.compile(r'(\d+(?:\.\d+)?)\s*([a-z]+)', re.IGNORECASE)
-        match = number_currency_pattern.search(msg_lower)
-        
-        amount = None
-        from_currency_alias = None
-        
-        if match:
-            amount = float(match.group(1))
-            from_currency_alias = match.group(2)
-            logger.info(f"Found number+currency: {amount} {from_currency_alias}")
-        else:
-            amount_match = re.search(r'(\d+(?:\.\d+)?)', msg_lower)
-            if amount_match:
-                amount = float(amount_match.group(1))
-        
-        if not amount:
+        # Extract amount (handle both "500" and "500.50")
+        amount_match = re.search(r'(\d+(?:\.\d+)?)', msg_lower)
+        if not amount_match:
             return None
         
-        # Find all currency codes mentioned
+        amount = float(amount_match.group(1))
+        
+        # Find all currency codes mentioned in the message
         found_currencies = []
         
         for alias, code in cls.CURRENCY_ALIASES.items():
@@ -238,18 +229,22 @@ class JAICurrency:
                 if code not in found_currencies:
                     found_currencies.append(code)
         
-        if from_currency_alias:
-            for alias, code in cls.CURRENCY_ALIASES.items():
-                if alias == from_currency_alias:
-                    if code not in found_currencies:
-                        found_currencies.insert(0, code)
-                    break
+        # Also check for direct 3-letter codes (USD, KES, ZAR, etc.)
+        code_pattern = r'\b([A-Z]{3})\b'
+        code_matches = re.findall(code_pattern, msg_lower.upper())
+        for code in code_matches:
+            if code in cls.CURRENCIES and code not in found_currencies:
+                found_currencies.append(code)
         
-        # Determine from/to based on keywords
+        if len(found_currencies) < 2:
+            return None
+        
+        # Determine from/to based on position in message
         from_curr = None
         to_curr = None
         
-        to_keywords = ['to', 'in', 'into', 'for', '->']
+        # Look for "to" or "in" keyword
+        to_keywords = ['to', 'in', 'into', 'for']
         to_pos = len(msg_lower)
         
         for kw in to_keywords:
@@ -258,6 +253,7 @@ class JAICurrency:
                 to_pos = pos
         
         if to_pos < len(msg_lower):
+            # Split by "to" position
             before = msg_lower[:to_pos]
             after = msg_lower[to_pos:]
             
@@ -268,12 +264,10 @@ class JAICurrency:
                 elif code_lower in after and to_curr is None:
                     to_curr = code
         else:
+            # No "to" keyword, use first as from, last as to
             if len(found_currencies) >= 2:
                 from_curr = found_currencies[0]
-                to_curr = found_currencies[1]
-            elif len(found_currencies) == 1:
-                from_curr = found_currencies[0]
-                to_curr = 'KES' if from_curr != 'KES' else 'NGN'
+                to_curr = found_currencies[-1]
         
         if from_curr and to_curr and from_curr != to_curr:
             result = cls.convert(amount, from_curr, to_curr)
@@ -281,6 +275,9 @@ class JAICurrency:
                 formatted_amount = cls.format(amount, from_curr)
                 formatted_result = cls.format(result, to_curr)
                 rate = cls.convert(1, from_curr, to_curr)
+                
+                from_info = cls.CURRENCIES.get(from_curr, {})
+                to_info = cls.CURRENCIES.get(to_curr, {})
                 
                 return f"💱 {formatted_amount} = {formatted_result}\n\n📊 Rate: 1 {from_curr} = {rate:,.4f} {to_curr}"
         
