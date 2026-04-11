@@ -86,7 +86,8 @@ class JAIPersonality:
                 JAIMemory.save_conversation(client_id, original_message, writing_response)
                 return writing_response
         
-        # ========== CURRENCY CONVERSION ==========
+        # ========== CURRENCY CONVERSION (HIGH PRIORITY) ==========
+        # Moved to HIGH priority - BEFORE casual responses
         currency_result = JAICurrency.detect_and_convert(original_message)
         if currency_result:
             JAIMemory.save_conversation(client_id, original_message, currency_result)
