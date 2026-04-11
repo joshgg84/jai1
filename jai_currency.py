@@ -36,15 +36,18 @@ class JAICurrency:
         'PLN': 4.00, 'THB': 36.0, 'MYR': 4.70, 'IDR': 15600.0, 'PHP': 56.0,
         'VND': 25400.0, 'AED': 3.67, 'SAR': 3.75, 'ILS': 3.70,
         
-        # African currencies
-        'NGN': 1500.0, 'ZAR': 18.0, 'KES': 130.0, 'GHS': 12.0, 'UGX': 3800.0,
-        'TZS': 2600.0, 'RWF': 1300.0, 'BWP': 13.0, 'ZMW': 22.0, 'NAD': 18.0,
-        'EGP': 48.0, 'MAD': 10.0, 'TND': 3.1, 'DZD': 135.0, 'XOF': 600.0,
-        'XAF': 600.0, 'CDF': 2800.0, 'MUR': 46.0, 'SCR': 14.0, 'ETB': 56.0,
-        'MZN': 64.0, 'AOA': 830.0, 'LSL': 18.0, 'SZL': 18.0, 'ZWL': 360.0,
-        'LYD': 4.8, 'SDG': 600.0, 'SOS': 570.0, 'DJF': 178.0, 'KMF': 490.0,
-        'GMD': 70.0, 'LRD': 190.0, 'SLL': 21000.0, 'MRU': 38.0, 'ERN': 15.0,
-        'BIF': 2850.0, 'MWK': 1700.0, 'MGA': 4500.0, 'STN': 23.0, 'CVE': 103.0
+        # African currencies (updated rates)
+        'NGN': 1550.0,   # Nigerian Naira
+        'ZAR': 18.50,    # South African Rand
+        'KES': 130.0,    # Kenyan Shilling
+        'GHS': 12.0, 'UGX': 3800.0, 'TZS': 2600.0, 'RWF': 1300.0,
+        'BWP': 13.0, 'ZMW': 22.0, 'NAD': 18.0, 'EGP': 48.0, 'MAD': 10.0,
+        'TND': 3.1, 'DZD': 135.0, 'XOF': 600.0, 'XAF': 600.0, 'CDF': 2800.0,
+        'MUR': 46.0, 'SCR': 14.0, 'ETB': 56.0, 'MZN': 64.0, 'AOA': 830.0,
+        'LSL': 18.0, 'SZL': 18.0, 'ZWL': 360.0, 'LYD': 4.8, 'SDG': 600.0,
+        'SOS': 570.0, 'DJF': 178.0, 'KMF': 490.0, 'GMD': 70.0, 'LRD': 190.0,
+        'SLL': 21000.0, 'MRU': 38.0, 'ERN': 15.0, 'BIF': 2850.0, 'MWK': 1700.0,
+        'MGA': 4500.0, 'STN': 23.0, 'CVE': 103.0
     }
     
     # Currency information
@@ -119,7 +122,7 @@ class JAICurrency:
         
         # African currencies
         'ngn': 'NGN', 'naira': 'NGN', 'nigerian naira': 'NGN',
-        'zar': 'ZAR', 'rand': 'ZAR', 'rands': 'ZAR', 'south african rand': 'ZAR', 'south african rands': 'ZAR',
+        'zar': 'ZAR', 'rand': 'ZAR', 'rands': 'ZAR', 'south african rand': 'ZAR', 'south african rands': 'ZAR', 'south african': 'ZAR',
         'kes': 'KES', 'shilling': 'KES', 'kenyan shilling': 'KES', 'kenya shilling': 'KES', 'ksh': 'KES',
         'ghs': 'GHS', 'cedi': 'GHS', 'ghanaian cedi': 'GHS',
         'ugx': 'UGX', 'ugandan shilling': 'UGX',
@@ -214,12 +217,16 @@ class JAICurrency:
         
         msg_lower = message.lower().strip()
         
+        # Debug log
+        logger.info(f"Currency check: {msg_lower}")
+        
         # Extract amount (handle both "500" and "500.50")
         amount_match = re.search(r'(\d+(?:\.\d+)?)', msg_lower)
         if not amount_match:
             return None
         
         amount = float(amount_match.group(1))
+        logger.info(f"Found amount: {amount}")
         
         # Find all currency codes mentioned in the message
         found_currencies = []
@@ -228,13 +235,17 @@ class JAICurrency:
             if alias in msg_lower:
                 if code not in found_currencies:
                     found_currencies.append(code)
+                    logger.info(f"Found currency via alias '{alias}': {code}")
         
-        # Also check for direct 3-letter codes (USD, KES, ZAR, etc.)
+        # Also check for direct 3-letter codes
         code_pattern = r'\b([A-Z]{3})\b'
         code_matches = re.findall(code_pattern, msg_lower.upper())
         for code in code_matches:
             if code in cls.CURRENCIES and code not in found_currencies:
                 found_currencies.append(code)
+                logger.info(f"Found currency via direct code: {code}")
+        
+        logger.info(f"All found currencies: {found_currencies}")
         
         if len(found_currencies) < 2:
             return None
@@ -253,7 +264,6 @@ class JAICurrency:
                 to_pos = pos
         
         if to_pos < len(msg_lower):
-            # Split by "to" position
             before = msg_lower[:to_pos]
             after = msg_lower[to_pos:]
             
@@ -261,13 +271,17 @@ class JAICurrency:
                 code_lower = code.lower()
                 if code_lower in before and from_curr is None:
                     from_curr = code
+                    logger.info(f"From currency (before 'to'): {from_curr}")
                 elif code_lower in after and to_curr is None:
                     to_curr = code
-        else:
-            # No "to" keyword, use first as from, last as to
+                    logger.info(f"To currency (after 'to'): {to_curr}")
+        
+        # If no "to" keyword found, use first as from, last as to
+        if not from_curr or not to_curr:
             if len(found_currencies) >= 2:
                 from_curr = found_currencies[0]
                 to_curr = found_currencies[-1]
+                logger.info(f"No 'to' keyword. Using first={from_curr}, last={to_curr}")
         
         if from_curr and to_curr and from_curr != to_curr:
             result = cls.convert(amount, from_curr, to_curr)
@@ -276,10 +290,13 @@ class JAICurrency:
                 formatted_result = cls.format(result, to_curr)
                 rate = cls.convert(1, from_curr, to_curr)
                 
-                from_info = cls.CURRENCIES.get(from_curr, {})
-                to_info = cls.CURRENCIES.get(to_curr, {})
-                
-                return f"💱 {formatted_amount} = {formatted_result}\n\n📊 Rate: 1 {from_curr} = {rate:,.4f} {to_curr}"
+                response = f"💱 {formatted_amount} = {formatted_result}\n\n📊 Rate: 1 {from_curr} = {rate:,.4f} {to_curr}"
+                logger.info(f"Conversion successful: {response}")
+                return response
+            else:
+                logger.warning(f"Conversion failed for {from_curr} to {to_curr}")
+        else:
+            logger.warning(f"Missing currencies: from={from_curr}, to={to_curr}")
         
         return None
     
