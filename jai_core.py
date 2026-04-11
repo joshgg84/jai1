@@ -64,36 +64,58 @@ class JAIPersonality:
                     JAIMemory.save_conversation(client_id, original_message, doc_answer)
                     return doc_answer
         
-        # ========== MEMORY AWARENESS QUESTIONS (HIGH PRIORITY) ==========
-        # Handle questions about memory/capabilities
+        # ========== MEMORY - GET USER FACTS ==========
         user_facts = JAIMemory.get_user_facts(client_id)
         user_name = user_facts.get("name", None)
         
-        # Questions about remembering
-        if any(word in msg for word in ['remember', 'forget', 'memory', 'recall', 'know my name']):
+        # ========== QUESTIONS ABOUT USER'S NAME / IDENTITY (HIGHEST PRIORITY) ==========
+        # Check if user is asking about their own name
+        name_question_patterns = [
+            r'what(\'s| is)? my name',
+            r'do you know my name',
+            r'remember my name',
+            r'who am i',
+            r'my name is',
+            r'what do you call me'
+        ]
+        
+        for pattern in name_question_patterns:
+            if re.search(pattern, msg):
+                if user_name:
+                    response = f"I remember you, {user_name}! 😊 Your name is {user_name}."
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return response
+                else:
+                    response = "I don't know your name yet. Please tell me: 'My name is [your name]' and I'll remember it! 😊"
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return response
+        
+        # ========== MEMORY AWARENESS QUESTIONS ==========
+        if any(word in msg for word in ['remember', 'forget', 'memory', 'recall', 'know my name', 'do you have memory']):
             if user_name:
                 if 'remember' in msg or 'recall' in msg:
-                    return f"Yes, I remember you, {user_name}! 😊 I store your name and facts in my memory. Even if you leave and come back, I'll still know who you are. Your memory is saved with your client ID."
+                    response = f"Yes, I remember you, {user_name}! 😊 I store your name and facts in my memory. Even if you leave and come back, I'll still know who you are."
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return response
                 elif 'forget' in msg:
-                    return f"I would never forget you, {user_name}! 😊 But if you want me to forget, you can clear your memory by asking me to 'forget me'."
+                    response = f"I would never forget you, {user_name}! 😊 But if you want me to forget, you can ask me to 'forget me'."
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return response
                 else:
-                    return f"Yes, {user_name}! I have memory. I remember your name and what you tell me. Your data is saved and will be here when you return. 🧠"
+                    response = f"Yes, {user_name}! I have memory. I remember your name and what you tell me. 🧠"
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return response
             else:
-                return "I have memory capabilities! I can remember your name, preferences, and important facts you tell me. Just tell me your name and I'll remember it! 🧠"
+                response = "I have memory capabilities! I can remember your name, preferences, and important facts. Just tell me your name and I'll remember it! 🧠"
+                JAIMemory.save_conversation(client_id, original_message, response)
+                return response
         
-        # Explicit forget command
+        # ========== EXPLICIT FORGET COMMAND ==========
         if msg == 'forget me' or msg == 'clear memory' or msg == 'delete my data':
             JAIMemory.clear_user_data(client_id)
-            return "✅ I've cleared your memory. I won't remember our previous conversations. Starting fresh! 👋"
-        
-        # Questions about memory capability
-        if any(word in msg for word in ['do you have memory', 'can you remember', 'what do you remember']):
-            if user_name:
-                facts = JAIMemory.get_user_facts(client_id)
-                fact_list = "\n".join([f"• {k}: {v}" for k, v in facts.items()]) if facts else "Nothing yet"
-                return f"🧠 **Yes, I have memory!**\n\nI remember:\n{fact_list}\n\nI also remember our conversation history. Ask me 'forget me' if you want me to clear my memory."
-            else:
-                return "🧠 **Yes, I have memory!**\n\nI can remember:\n• Your name\n• Your preferences\n• Important facts you tell me\n• Our conversation history\n\nJust tell me something like 'My name is Joshua' and I'll remember it forever!"
+            response = "✅ I've cleared your memory. I won't remember our previous conversations. Starting fresh! 👋"
+            JAIMemory.save_conversation(client_id, original_message, response)
+            return response
         
         # ========== CURRENCY CONVERSION ==========
         currency_result = JAICurrency.detect_and_convert(original_message)
@@ -122,6 +144,44 @@ class JAIPersonality:
             if calc_result:
                 JAIMemory.save_conversation(client_id, original_message, calc_result)
                 return calc_result
+        
+        # ========== TIME & DATE ==========
+        if "time" in msg:
+            time_response = TimeService.get_time()
+            JAIMemory.save_conversation(client_id, original_message, time_response)
+            return time_response
+        if "date" in msg:
+            date_response = TimeService.get_date()
+            JAIMemory.save_conversation(client_id, original_message, date_response)
+            return date_response
+        
+        # ========== MEMORY (FACTS & RESPONSES) ==========
+        next_time_response = JAIMemory.get_next_time_say_response(client_id, original_message)
+        if next_time_response:
+            JAIMemory.save_conversation(client_id, original_message, next_time_response)
+            return next_time_response
+        
+        taught_response = JAIMemory.get_taught_response(client_id, original_message)
+        if taught_response:
+            JAIMemory.save_conversation(client_id, original_message, taught_response)
+            return taught_response
+        
+        # Extract user facts
+        learned_facts = JAIMemory.extract_and_save_user_fact(client_id, original_message)
+        if learned_facts:
+            for fact_key, fact_value in learned_facts:
+                if fact_key == "name":
+                    response = f"Nice to meet you, {fact_value}! 😊 I'll remember your name."
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return response
+                elif fact_key == "age":
+                    response = f"Got it! You're {fact_value} years old! I'll remember that."
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return response
+                elif fact_key == "location":
+                    response = f"Cool! {fact_value} is a great place! I've saved that."
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return response
         
         # ========== CHECK FOR GENERAL KNOWLEDGE QUESTIONS ==========
         clean_msg = msg.strip()
@@ -164,44 +224,6 @@ class JAIPersonality:
             if search_result:
                 JAIMemory.save_conversation(client_id, original_message, search_result)
                 return search_result
-        
-        # ========== TIME & DATE ==========
-        if "time" in msg:
-            time_response = TimeService.get_time()
-            JAIMemory.save_conversation(client_id, original_message, time_response)
-            return time_response
-        if "date" in msg:
-            date_response = TimeService.get_date()
-            JAIMemory.save_conversation(client_id, original_message, date_response)
-            return date_response
-        
-        # ========== MEMORY (FACTS & RESPONSES) ==========
-        next_time_response = JAIMemory.get_next_time_say_response(client_id, original_message)
-        if next_time_response:
-            JAIMemory.save_conversation(client_id, original_message, next_time_response)
-            return next_time_response
-        
-        taught_response = JAIMemory.get_taught_response(client_id, original_message)
-        if taught_response:
-            JAIMemory.save_conversation(client_id, original_message, taught_response)
-            return taught_response
-        
-        # Extract user facts
-        learned_facts = JAIMemory.extract_and_save_user_fact(client_id, original_message)
-        if learned_facts:
-            for fact_key, fact_value in learned_facts:
-                if fact_key == "name":
-                    response = f"Nice to meet you, {fact_value}! 😊 I'll remember your name."
-                    JAIMemory.save_conversation(client_id, original_message, response)
-                    return response
-                elif fact_key == "age":
-                    response = f"Got it! You're {fact_value} years old! I'll remember that."
-                    JAIMemory.save_conversation(client_id, original_message, response)
-                    return response
-                elif fact_key == "location":
-                    response = f"Cool! {fact_value} is a great place! I've saved that."
-                    JAIMemory.save_conversation(client_id, original_message, response)
-                    return response
         
         # ========== LEARNING PATTERNS ==========
         next_time_pattern = re.search(r'next time .+? say[s]? ["\']?(.+?)["\']?\s+(?:say|respond with) ["\']?(.+?)["\']?', msg, re.IGNORECASE)
