@@ -86,8 +86,7 @@ class JAIPersonality:
                 JAIMemory.save_conversation(client_id, original_message, writing_response)
                 return writing_response
         
-        # ========== CURRENCY CONVERSION (HIGH PRIORITY) ==========
-        # Moved to HIGH priority - BEFORE casual responses
+        # ========== CURRENCY CONVERSION ==========
         currency_result = JAICurrency.detect_and_convert(original_message)
         if currency_result:
             JAIMemory.save_conversation(client_id, original_message, currency_result)
@@ -136,18 +135,11 @@ class JAIPersonality:
             JAIMemory.save_conversation(client_id, original_message, next_time_response)
             return next_time_response
         
-        # ========== CASUAL RESPONSES ==========
-        user_facts = JAIMemory.get_user_facts(client_id)
-        user_name = user_facts.get("name", None)
-        casual_response = JAICasual.get_casual_response(original_message, user_name)
-        if casual_response:
-            JAIMemory.save_conversation(client_id, original_message, casual_response)
-            return casual_response
-        
         # ========== CHECK FOR GENERAL KNOWLEDGE QUESTIONS ==========
         clean_msg = msg.strip()
         clean_msg = re.sub(r'\?{3,}', '?', clean_msg)
         
+        # Expanded general knowledge patterns
         general_knowledge_patterns = [
             r'who created', r'who founded', r'who invented', r'who discovered',
             r'who is', r'who was', r'who are',
@@ -159,7 +151,14 @@ class JAIPersonality:
             r'tell me about', r'explain', r'define', r'meaning of',
             r'what does .+ mean', r'what is .+ called',
             r'can you tell me', r'do you know', r'i want to know',
-            r'please explain', r'help me understand'
+            r'please explain', r'help me understand',
+            # Capital cities and facts
+            r'capital of', r'capital city', r'what is the capital',
+            r'population of', r'area of', r'currency of',
+            r'largest city', r'biggest city', r'official language',
+            r'president of', r'prime minister of', r'king of', r'queen of',
+            r'founded in', r'established in', r'created in', r'built in',
+            r'located in', r'situated in', r'famous for', r'known for'
         ]
         
         is_general_knowledge = False
@@ -169,15 +168,23 @@ class JAIPersonality:
                 logger.info(f"General knowledge detected: {pattern}")
                 break
         
+        # Check for question mark
         has_question_mark = '?' in original_message or '？' in original_message
+        if has_question_mark:
+            is_general_knowledge = True
+            logger.info("General knowledge detected: question mark")
+        
+        # Check if message starts with question words
         question_start_words = ['what', 'who', 'where', 'when', 'why', 'how', 'which', 'whose', 'whom']
         starts_with_question = any(clean_msg.startswith(word) for word in question_start_words)
-        
-        if has_question_mark or starts_with_question:
+        if starts_with_question:
             is_general_knowledge = True
+            logger.info("General knowledge detected: starts with question word")
         
-        if len(clean_msg) < 30 and has_question_mark:
+        # Check for short questions
+        if len(clean_msg) < 50 and has_question_mark:
             is_general_knowledge = True
+            logger.info("General knowledge detected: short question pattern")
         
         if is_general_knowledge:
             logger.info(f"Searching online for: {original_message}")
@@ -185,6 +192,14 @@ class JAIPersonality:
             if search_result:
                 JAIMemory.save_conversation(client_id, original_message, search_result)
                 return search_result
+        
+        # ========== CASUAL RESPONSES ==========
+        user_facts = JAIMemory.get_user_facts(client_id)
+        user_name = user_facts.get("name", None)
+        casual_response = JAICasual.get_casual_response(original_message, user_name)
+        if casual_response:
+            JAIMemory.save_conversation(client_id, original_message, casual_response)
+            return casual_response
         
         # ========== LEARNING PATTERNS ==========
         next_time_pattern = re.search(r'next time .+? say[s]? ["\']?(.+?)["\']?\s+(?:say|respond with) ["\']?(.+?)["\']?', msg, re.IGNORECASE)
