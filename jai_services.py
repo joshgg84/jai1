@@ -18,7 +18,6 @@ class WebSearch:
     def search_online(cls, query):
         """Quick search using Wikipedia API"""
         try:
-            # Clean the query - extract the main subject
             clean_query = cls._extract_subject(query)
             if not clean_query or len(clean_query) < 3:
                 return None
@@ -26,7 +25,6 @@ class WebSearch:
             logger.info(f"Original query: {query}")
             logger.info(f"Extracted subject: {clean_query}")
             
-            # Try Wikipedia directly
             result = cls._search_wikipedia(clean_query)
             if result:
                 return result
@@ -52,7 +50,25 @@ class WebSearch:
         
         query_lower = query_without_q.lower()
         
-        # List of question patterns to remove (expanded)
+        # Handle "capital of X" patterns specially
+        capital_match = re.search(r'capital of\s+([A-Za-z\s]+)', query_lower)
+        if capital_match:
+            country = capital_match.group(1).strip()
+            return f"Capital of {country.title()}"
+        
+        # Handle "population of X" patterns
+        population_match = re.search(r'population of\s+([A-Za-z\s]+)', query_lower)
+        if population_match:
+            place = population_match.group(1).strip()
+            return f"Population of {place.title()}"
+        
+        # Handle "currency of X" patterns
+        currency_match = re.search(r'currency of\s+([A-Za-z\s]+)', query_lower)
+        if currency_match:
+            place = currency_match.group(1).strip()
+            return f"Currency of {place.title()}"
+        
+        # List of question patterns to remove
         question_patterns = [
             'who created', 'who made', 'who invented', 'who discovered',
             'who founded', 'who is', 'who was', 'who are',
@@ -64,7 +80,8 @@ class WebSearch:
             'tell me about', 'explain', 'define',
             'can you tell me about', 'do you know',
             'can you', 'could you', 'please tell me',
-            'i want to know about', 'what\'s', 'who\'s'
+            'i want to know about', 'what\'s', 'who\'s',
+            'capital of', 'population of', 'area of', 'currency of'
         ]
         
         # Remove the question prefix
@@ -77,7 +94,6 @@ class WebSearch:
         if len(query_without_q) < 2:
             words = query_lower.split()
             if words:
-                # Get the last word (likely the subject)
                 query_without_q = words[-1]
         
         # Capitalize first letter for Wikipedia
@@ -90,12 +106,8 @@ class WebSearch:
     def _search_wikipedia(cls, term):
         """Search Wikipedia for a term"""
         try:
-            # Format the term for URL
             formatted_term = term.replace(' ', '_')
-            
-            # Try direct page first
             url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{formatted_term}'
-            logger.info(f"Wikipedia URL: {url}")
             
             response = requests.get(url, timeout=8, headers={'User-Agent': 'JAI/1.0'})
             
@@ -103,14 +115,10 @@ class WebSearch:
                 data = response.json()
                 if data.get('extract'):
                     extract = data['extract']
-                    # Remove parentheticals
                     extract = re.sub(r'\([^)]*\)', '', extract)
-                    # Clean up whitespace
                     extract = ' '.join(extract.split())
-                    # Limit length
                     if len(extract) > 600:
                         extract = extract[:600] + "..."
-                    logger.info(f"Found Wikipedia page for: {term}")
                     return extract
             
             # Try search API if direct page fails
@@ -120,11 +128,7 @@ class WebSearch:
             if search_response.status_code == 200:
                 search_data = search_response.json()
                 if search_data.get('query', {}).get('search'):
-                    # Get the first search result
                     first_result = search_data['query']['search'][0]['title']
-                    logger.info(f"Search found: {first_result}")
-                    
-                    # Fetch that page
                     page_url = f'https://en.wikipedia.org/api/rest_v1/page/summary/{first_result.replace(" ", "_")}'
                     page_response = requests.get(page_url, timeout=8)
                     
@@ -145,15 +149,12 @@ class WebSearch:
     
     @classmethod
     def should_search(cls, message):
-        """Quick check if message needs web search - more flexible"""
+        """Quick check if message needs web search"""
         if not message:
             return False
             
         msg = message.lower().strip()
-        # Remove excessive question marks
-        msg = re.sub(r'\?{2,}', '?', msg)
         
-        # Check for question patterns
         question_patterns = [
             'who created', 'who made', 'who invented', 'who discovered',
             'who founded', 'who is', 'who was', 'who are',
@@ -163,23 +164,14 @@ class WebSearch:
             'why is', 'why was', 'why did',
             'how to', 'how do', 'how does',
             'tell me about', 'explain', 'define',
-            'can you', 'could you', 'do you know'
+            'capital of', 'population of'
         ]
         
         for pattern in question_patterns:
             if pattern in msg:
-                logger.info(f"Search triggered by: {pattern}")
                 return True
         
-        # Check for question mark (anywhere, not just end)
         if '?' in msg:
-            logger.info("Search triggered by question mark")
-            return True
-        
-        # Check if message starts with question words
-        question_starts = ['what', 'who', 'where', 'when', 'why', 'how', 'which']
-        if any(msg.startswith(word) for word in question_starts):
-            logger.info(f"Search triggered by question start word")
             return True
         
         return False
@@ -187,10 +179,9 @@ class WebSearch:
 
 # ========== FAST CACHE ==========
 _search_cache = {}
-_cache_duration = 3600  # 1 hour
+_cache_duration = 3600
 
 def get_cached_search(query):
-    """Get cached search result"""
     key = query.lower().strip()
     if key in _search_cache:
         cache_time = _search_cache[key]['time']
@@ -199,7 +190,6 @@ def get_cached_search(query):
     return None
 
 def cache_search_result(query, result):
-    """Cache search result"""
     key = query.lower().strip()
     _search_cache[key] = {
         'result': result,
@@ -209,11 +199,8 @@ def cache_search_result(query, result):
 
 # ========== WEATHER MODULE ==========
 class Weather:
-    """Get weather information quickly"""
-    
     @classmethod
     def get_weather(cls, city=None):
-        """Get current weather for a city"""
         if not city:
             city = "Lagos"
         
@@ -232,10 +219,8 @@ class Weather:
     
     @classmethod
     def detect_weather_query(cls, message):
-        """Quick weather detection"""
         if not message:
             return None
-            
         msg_lower = message.lower()
         
         if 'weather' in msg_lower or 'temperature' in msg_lower:
@@ -251,8 +236,6 @@ class Weather:
 
 # ========== CALCULATION MODULE ==========
 class Calculator:
-    """Fast math calculations"""
-    
     @staticmethod
     def calculate(expr):
         try:
@@ -276,8 +259,6 @@ class Calculator:
 
 # ========== TIME MODULE ==========
 class TimeService:
-    """Fast time and date"""
-    
     @staticmethod
     def get_time():
         now = datetime.now()
@@ -298,11 +279,8 @@ class TimeService:
 
 # ========== GENERAL KNOWLEDGE DETECTION ==========
 class GeneralKnowledge:
-    """Detect if question needs web search"""
-    
     @staticmethod
     def is_general_question(question):
-        """Quick check if this is a general knowledge question"""
         if not question:
             return False
             
@@ -316,7 +294,8 @@ class GeneralKnowledge:
             r'when is', r'when was', r'when did',
             r'why is', r'why was', r'why did',
             r'how to', r'how do', r'how does',
-            r'tell me about', r'explain', r'define'
+            r'tell me about', r'explain', r'define',
+            r'capital of', r'population of'
         ]
         
         for pattern in patterns:
