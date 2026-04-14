@@ -182,21 +182,26 @@ class DocumentHandler:
     def _call_jai_for_explanation(content, filename, question):
         """Use JAI to actually explain the document content"""
         try:
-            # Take a relevant portion of the document (first 2000 chars for context)
-            doc_excerpt = content[:2000] if len(content) > 2000 else content
+            # Take a relevant portion of the document
+            doc_excerpt = content[:3000] if len(content) > 3000 else content
             
             # Build a prompt for JAI to explain
-            prompt = f"""Based on this document content, please answer the user's question in a helpful, educational way.
+            prompt = f"""You are analyzing a document named "{filename}". 
 
-DOCUMENT: {filename}
-CONTENT: {doc_excerpt}
+DOCUMENT CONTENT:
+{doc_excerpt}
 
 USER QUESTION: {question}
 
-Please provide a clear, informative explanation. If the document doesn't contain information relevant to the question, say so politely."""
+Please provide a clear, helpful, and informative answer based ONLY on the document content above. 
+- If the document contains personal information (name, location, skills), state them clearly
+- If the user asks for an explanation, explain in simple terms
+- Be conversational and helpful
+- If the document doesn't contain the information, say so politely
+
+Your response:"""
             
             # Call JAI API
-            import requests
             response = requests.post(
                 "https://jai1-sh81.onrender.com/api/chat",
                 json={"message": prompt, "clientId": "document_handler", "options": {"speech": False}},
@@ -243,10 +248,12 @@ Please provide a clear, informative explanation. If the document doesn't contain
                 return DocumentHandler.generate_long_summary(content, filename)
         
         # ========== USE JAI TO ACTUALLY EXPLAIN ==========
-        # For any other question, let JAI provide an intelligent explanation
-        if len(question_lower) > 3:
+        # For questions like "explain", "tell me about", "what is", etc.
+        if len(question_lower) > 2:
             ai_explanation = DocumentHandler._call_jai_for_explanation(content, filename, question)
-            if ai_explanation:
+            if ai_explanation and len(ai_explanation) > 10:
+                # Clean up the response - remove any "AI:" prefixes if present
+                ai_explanation = re.sub(r'^(AI:|Assistant:|Response:)\s*', '', ai_explanation)
                 return ai_explanation
         
         # ========== FALLBACK - Show document preview ==========
