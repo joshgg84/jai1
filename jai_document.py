@@ -81,6 +81,10 @@ class DocumentHandler:
         if any(filename_lower.endswith(ext) for ext in code_extensions):
             return "Code File", "💻"
         
+        # Vulnerable server code (educational)
+        if 'vulnerable' in filename_lower or ('const' in text_lower and 'http' in text_lower and 'fs' in text_lower):
+            return "Educational Code (Vulnerable Server)", "⚠️"
+        
         # Resume/CV indicators
         if 'resume' in filename_lower or 'cv' in filename_lower:
             return "Resume/CV", "📄"
@@ -99,14 +103,6 @@ class DocumentHandler:
         # Reports
         if any(word in text_lower for word in ['report', 'analysis', 'findings', 'recommendations', 'executive summary']):
             return "Report", "📊"
-        
-        # Technical documentation
-        if any(word in text_lower for word in ['api', 'endpoint', 'request', 'response', 'authentication', 'documentation']):
-            return "Technical Documentation", "📘"
-        
-        # Meeting/Conference notes
-        if any(word in text_lower for word in ['conference', 'seminar', 'workshop', 'keynote', 'speaker']):
-            return "Conference Notes", "🎤"
         
         # Default
         return "Document", "📄"
@@ -144,14 +140,12 @@ class DocumentHandler:
         summary += "**💡 You can ask me:**\n"
         if doc_type == "Resume/CV":
             summary += "• 'What is this person's name?'\n• 'What are their skills?'\n• 'Where are they located?'\n"
-        elif doc_type == "Code File":
-            summary += "• 'What does this code do?'\n• 'Explain how this works'\n• 'What language is this?'\n"
+        elif "Code" in doc_type:
+            summary += "• 'Explain what this code does'\n• 'What are the vulnerabilities?'\n• 'How does this server work?'\n"
         elif doc_type == "Meeting Notes":
-            summary += "• 'What were the key decisions?'\n• 'What are the action items?'\n• 'Who attended?'\n"
-        elif doc_type == "Legal Document":
-            summary += "• 'What are the key terms?'\n• 'What are the obligations?'\n• 'What are the important dates?'\n"
+            summary += "• 'What were the key decisions?'\n• 'What are the action items?'\n"
         else:
-            summary += "• 'Explain this document in simple terms'\n• 'What are the key points?'\n• 'Tell me about a specific section'\n"
+            summary += "• 'Explain this document in simple terms'\n• 'What are the key points?'\n"
         
         return summary
     
@@ -176,7 +170,7 @@ class DocumentHandler:
                 simplified += f"{i}. {clean_line}\n\n"
         
         simplified += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        simplified += "💡 **Ask me:** 'Explain this document' or 'What are the key points?'"
+        simplified += "💡 **Ask me:** 'Explain what this code does' or 'What are the vulnerabilities?'"
         
         return simplified
     
@@ -206,38 +200,40 @@ class DocumentHandler:
     def _call_jai_for_explanation(content, filename, question):
         """Use JAI to actually explain the document content"""
         try:
-            # Take a relevant portion of the document (first 3000 chars)
-            doc_excerpt = content[:3000] if len(content) > 3000 else content
+            # Take a relevant portion of the document
+            doc_excerpt = content[:2000] if len(content) > 2000 else content
             
-            # Build a prompt for JAI to explain - generic for any document type
-            prompt = f"""You are analyzing a document named "{filename}". 
+            # Build a prompt for JAI to explain
+            prompt = f"""You are an AI assistant analyzing a document.
 
+DOCUMENT NAME: {filename}
 DOCUMENT CONTENT:
 {doc_excerpt}
 
 USER QUESTION: {question}
 
-Please provide a clear, helpful, and informative answer based ONLY on the document content above.
+IMPORTANT: 
+1. Read and understand the document content above
+2. Answer the user's question directly based ONLY on the document
+3. DO NOT just repeat or copy the document text
+4. EXPLAIN in your own words what the document means
+5. If it's code, explain what the code does
+6. If it's a resume, state the person's name, skills, location
+7. Be helpful and conversational
 
-Guidelines:
-- Read and understand the document first
-- Answer the user's question directly
-- If asking for an explanation, explain in simple, clear terms
-- Extract and state specific information (names, dates, skills, decisions, code functions, etc.)
-- Be conversational and helpful
-- If the document doesn't contain the information, say so politely
-
-Your response:"""
+Your explanation:"""
             
             # Call JAI API
             response = requests.post(
                 "https://jai1-sh81.onrender.com/api/chat",
-                json={"message": prompt, "clientId": "document_handler", "options": {"speech": False}},
+                json={"message": prompt, "clientId": "document_explainer", "options": {"speech": False}},
                 timeout=30
             )
             if response.status_code == 200:
                 data = response.json()
-                return data.get("response", None)
+                result = data.get("response", None)
+                if result and len(result) > 20:
+                    return result
             return None
         except Exception as e:
             logger.error(f"JAI explanation error: {e}")
@@ -276,23 +272,42 @@ Your response:"""
                 return DocumentHandler.generate_long_summary(content, filename)
         
         # ========== USE JAI TO ACTUALLY EXPLAIN ==========
-        # For ANY question, let JAI provide an intelligent explanation
-        if len(question_lower) > 2:
-            ai_explanation = DocumentHandler._call_jai_for_explanation(content, filename, question)
-            if ai_explanation and len(ai_explanation) > 10:
-                # Clean up the response
-                ai_explanation = re.sub(r'^(AI:|Assistant:|Response:)\s*', '', ai_explanation)
-                return ai_explanation
+        # Try to get an intelligent explanation from JAI
+        ai_explanation = DocumentHandler._call_jai_for_explanation(content, filename, question)
+        if ai_explanation:
+            return ai_explanation
         
-        # ========== FALLBACK - Show document preview ==========
+        # ========== FALLBACK - Provide a simple explanation based on document type ==========
+        doc_type, icon = DocumentHandler.detect_document_type(content, filename)
+        
+        if "Code" in doc_type or "vulnerable" in filename.lower():
+            # For code files, try to explain what the code does
+            lines = content.split('\n')
+            code_lines = [l.strip() for l in lines if l.strip() and ('const' in l or 'let' in l or 'function' in l or 'require' in l)]
+            
+            explanation = f"{icon} **About this code:**\n\n"
+            
+            if any('http' in l.lower() for l in code_lines):
+                explanation += "• This code creates an HTTP web server\n"
+            if any('fs' in l.lower() for l in code_lines):
+                explanation += "• It can read and write files using the file system (fs) module\n"
+            if any('path' in l.lower() for l in code_lines):
+                explanation += "• It handles file paths with the path module\n"
+            if 'vulnerable' in filename.lower():
+                explanation += "• ⚠️ This code contains intentional security vulnerabilities for educational purposes\n"
+            
+            explanation += "\n💡 Ask me specific questions like 'What does the http module do?' or 'Explain the vulnerabilities'"
+            return explanation
+        
+        # For any other document type
         lines = content.split('\n')
-        preview_lines = [l.strip() for l in lines if l.strip() and len(l.strip()) > 10][:5]
+        preview_lines = [l.strip() for l in lines if l.strip() and len(l.strip()) > 15][:4]
         
         if preview_lines:
-            preview = f"📄 **From '{filename}':**\n\n"
+            explanation = f"📄 **From '{filename}':**\n\n"
             for line in preview_lines:
-                preview += f"• {line[:150]}{'...' if len(line) > 150 else ''}\n"
-            preview += f"\n💡 Try asking: 'Summarize this document' or 'Explain what this means'"
-            return preview
+                explanation += f"• {line[:200]}{'...' if len(line) > 200 else ''}\n"
+            explanation += f"\n💡 To understand this better, try asking: 'Summarize this document' or 'Explain what this means'"
+            return explanation
         
-        return f"📖 **I can help you understand '{filename}'.**\n\nTry asking:\n• 'Summarize this document'\n• 'Explain what this means'\n• 'Tell me about [specific topic]'"
+        return f"📖 **I can help you understand '{filename}'.**\n\nTry asking:\n• 'Summarize this document'\n• 'Explain what this code does'\n• 'What are the key points?'"
