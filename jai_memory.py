@@ -13,6 +13,7 @@ _user_facts = {}
 _conversations = {}
 _learned_responses = {}
 _next_time_say = {}
+_current_feature = {}  # NEW: Store current feature/page per user
 
 
 class JAIMemory:
@@ -29,14 +30,24 @@ class JAIMemory:
                 'ai': ai_response,
                 'time': datetime.now()
             })
-            # Keep only last 50 messages
             if len(_conversations[client_id]) > 50:
                 _conversations[client_id] = _conversations[client_id][-50:]
-            logger.info(f"Saved conversation for {client_id}")
             return True
         except Exception as e:
             logger.error(f"Error saving conversation: {e}")
             return False
+    
+    @staticmethod
+    def set_current_feature(client_id, feature_name):
+        """Set the current feature/page the user is on"""
+        _current_feature[client_id] = feature_name
+        logger.info(f"User {client_id} entered feature: {feature_name}")
+        return True
+    
+    @staticmethod
+    def get_current_feature(client_id):
+        """Get the current feature/page the user is on"""
+        return _current_feature.get(client_id, None)
     
     @staticmethod
     def save_user_fact(client_id, key, value):
@@ -76,48 +87,31 @@ class JAIMemory:
         msg_lower = message.lower().strip()
         saved_facts = []
         
-        # IMPORTANT: Check for name patterns FIRST
-        # Pattern: "My name is Joshua"
-        name_match = re.search(r'(?:my name is|my name\'s|name is|i am|i\'m|call me|you can call me)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)', msg_lower, re.IGNORECASE)
+        # Name extraction (only with explicit patterns)
+        name_match = re.search(r'(?:my name is|my name\'s|name is|i am|i\'m|call me)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)', msg_lower, re.IGNORECASE)
         if name_match:
             name = name_match.group(1).strip().title()
-            # Validate name (only letters, not too short, not a common word)
-            common_words = ['yes', 'no', 'ok', 'okay', 'good', 'bad', 'fine', 'great', 'awesome']
+            common_words = ['yes', 'no', 'ok', 'okay', 'good', 'bad', 'fine', 'great', 'awesome', 'hello', 'hi', 'explain', 'summarize']
             if name.isalpha() and len(name) >= 2 and name.lower() not in common_words:
                 JAIMemory.save_user_fact(client_id, 'name', name)
                 saved_facts.append(('name', name))
-                logger.info(f"Extracted and saved name: {name} for {client_id}")
-                return saved_facts  # Return immediately after saving name
+                return saved_facts
         
-        # Also check for exact patterns with the word "is"
-        if 'my name is' in msg_lower:
-            parts = msg_lower.split('my name is')
-            if len(parts) > 1:
-                name_part = parts[1].strip().split()[0] if parts[1].strip() else ''
-                if name_part and name_part.isalpha() and len(name_part) >= 2:
-                    name = name_part.title()
-                    JAIMemory.save_user_fact(client_id, 'name', name)
-                    saved_facts.append(('name', name))
-                    logger.info(f"Extracted name via simple split: {name}")
-                    return saved_facts
-        
-        # Age pattern
+        # Age extraction
         age_match = re.search(r'(?:i am|i\'m|my age is|age is)\s+(\d+)\s*(?:years old|yrs old|year old)?', msg_lower, re.IGNORECASE)
         if age_match:
             age = age_match.group(1)
             JAIMemory.save_user_fact(client_id, 'age', age)
             saved_facts.append(('age', age))
-            logger.info(f"Extracted age: {age}")
             return saved_facts
         
-        # Location pattern
+        # Location extraction (only with explicit patterns)
         location_match = re.search(r'(?:i live in|i\'m from|my location is|from)\s+([A-Za-z\s]{3,})', msg_lower, re.IGNORECASE)
         if location_match:
             location = location_match.group(1).strip().title()
             if len(location) > 2:
                 JAIMemory.save_user_fact(client_id, 'location', location)
                 saved_facts.append(('location', location))
-                logger.info(f"Extracted location: {location}")
         
         return saved_facts
     
@@ -128,10 +122,8 @@ class JAIMemory:
             if client_id not in _learned_responses:
                 _learned_responses[client_id] = {}
             _learned_responses[client_id][trigger.lower()] = response
-            logger.info(f"Taught response for {client_id}: {trigger} -> {response}")
             return True, "Response learned!"
         except Exception as e:
-            logger.error(f"Error teaching response: {e}")
             return False, f"Error: {e}"
     
     @staticmethod
@@ -145,7 +137,6 @@ class JAIMemory:
                     return response
             return None
         except Exception as e:
-            logger.error(f"Error getting taught response: {e}")
             return None
     
     @staticmethod
@@ -155,10 +146,8 @@ class JAIMemory:
             if client_id not in _next_time_say:
                 _next_time_say[client_id] = {}
             _next_time_say[client_id][trigger.lower()] = response
-            logger.info(f"Learned next_time_say for {client_id}: {trigger} -> {response}")
             return True
         except Exception as e:
-            logger.error(f"Error learning next_time_say: {e}")
             return False
     
     @staticmethod
@@ -169,12 +158,10 @@ class JAIMemory:
             responses = _next_time_say.get(client_id, {})
             for trigger, response in responses.items():
                 if trigger in msg_lower:
-                    # Delete after use (one-time)
                     del _next_time_say[client_id][trigger]
                     return response
             return None
         except Exception as e:
-            logger.error(f"Error getting next_time_say response: {e}")
             return None
     
     @staticmethod
@@ -189,10 +176,10 @@ class JAIMemory:
                 del _learned_responses[client_id]
             if client_id in _next_time_say:
                 del _next_time_say[client_id]
-            logger.info(f"Cleared all data for {client_id}")
+            if client_id in _current_feature:
+                del _current_feature[client_id]
             return True
         except Exception as e:
-            logger.error(f"Error clearing user data: {e}")
             return False
     
     @staticmethod
@@ -202,11 +189,9 @@ class JAIMemory:
             convs = _conversations.get(client_id, [])
             return [(c['user'], c['ai'], c['time']) for c in convs[-limit:]]
         except Exception as e:
-            logger.error(f"Error getting conversation history: {e}")
             return []
 
 
-# Setup function for compatibility
 def setup_database():
     """Compatibility function - no database needed"""
     logger.info("Memory system ready (in-memory storage)")
