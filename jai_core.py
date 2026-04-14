@@ -34,6 +34,14 @@ class JAIPersonality:
         msg = message.lower().strip()
         original_message = message
         
+        # ========== HANDLE FEATURE ENTRY (Page navigation) ==========
+        if msg.startswith('entering '):
+            feature_name = message[9:].strip()  # Remove "entering " prefix
+            JAIMemory.set_current_feature(client_id, feature_name)
+            response = f"📱 Welcome to {feature_name}! How can I help you?"
+            JAIMemory.save_conversation(client_id, original_message, response)
+            return TextFormatter.format_all(response)
+        
         # ========== DOCUMENT UPLOAD COMMAND ==========
         if msg.startswith('upload_doc:'):
             try:
@@ -59,7 +67,8 @@ class JAIPersonality:
                 logger.error(f"Document upload error: {e}")
                 return f"❌ Error: {str(e)}"
         
-        # ========== DOCUMENT INTELLIGENCE ==========
+        # ========== DOCUMENT INTELLIGENCE (HIGHEST PRIORITY FOR DOCUMENT QUESTIONS) ==========
+        # This MUST come before User Handler to prevent "explain" from being treated as location
         if DocumentHandler.has_document(client_id):
             doc = DocumentHandler.get_user_document(client_id)
             if doc:
@@ -68,20 +77,20 @@ class JAIPersonality:
                     JAIMemory.save_conversation(client_id, original_message, doc_answer)
                     return TextFormatter.format_all(doc_answer)
         
-        # ========== USER HANDLER (Name, Emotions, Memory) ==========
+        # ========== USER HANDLER (Name, Emotions, Memory) - LOWER PRIORITY ==========
         user_response = UserHandler.handle_user_message(original_message, client_id)
         if user_response:
             JAIMemory.save_conversation(client_id, original_message, user_response)
             return TextFormatter.format_all(user_response)
         
-        # ========== CREATIVE WRITER (Love letters, poems, stories) ==========
+        # ========== CREATIVE WRITER ==========
         if CreativeWriterHandler.is_creative_request(original_message):
             creative_response = CreativeWriterHandler.handle_creative_request(original_message)
             if creative_response:
                 JAIMemory.save_conversation(client_id, original_message, creative_response)
                 return TextFormatter.format_all(creative_response)
         
-        # ========== PROFESSIONAL WRITER (Emails, proposals, reports) ==========
+        # ========== PROFESSIONAL WRITER ==========
         if ProfessionalWriterHandler.is_writing_request(original_message):
             writing_response = ProfessionalWriterHandler.handle_writing_request(original_message)
             if writing_response:
