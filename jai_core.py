@@ -20,6 +20,7 @@ from jai_document import DocumentHandler
 from jai_professional_writer import ProfessionalWriterHandler
 from jai_creative_writer import CreativeWriterHandler
 from jai_user_handler import UserHandler
+from jai_formatter import TextFormatter
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,8 @@ class JAIPersonality:
                         DocumentHandler.store_document(client_id, filename, text, simplified)
                         long_summary = DocumentHandler.generate_long_summary(text, filename)
                         JAIMemory.save_conversation(client_id, original_message, f"Document uploaded: {filename}")
-                        return f"✅ **Document uploaded successfully!**\n\n{long_summary}"
+                        response = f"✅ **Document uploaded successfully!**\n\n{long_summary}"
+                        return TextFormatter.format_all(response)
                     else:
                         return "❌ File appears empty or unreadable. Please check the file and try again."
                 else:
@@ -64,39 +66,39 @@ class JAIPersonality:
                 doc_answer = DocumentHandler.answer_question(client_id, original_message)
                 if doc_answer:
                     JAIMemory.save_conversation(client_id, original_message, doc_answer)
-                    return doc_answer
+                    return TextFormatter.format_all(doc_answer)
         
         # ========== USER HANDLER (Name, Emotions, Memory) ==========
         user_response = UserHandler.handle_user_message(original_message, client_id)
         if user_response:
             JAIMemory.save_conversation(client_id, original_message, user_response)
-            return user_response
+            return TextFormatter.format_all(user_response)
         
         # ========== CREATIVE WRITER (Love letters, poems, stories) ==========
         if CreativeWriterHandler.is_creative_request(original_message):
             creative_response = CreativeWriterHandler.handle_creative_request(original_message)
             if creative_response:
                 JAIMemory.save_conversation(client_id, original_message, creative_response)
-                return creative_response
+                return TextFormatter.format_all(creative_response)
         
         # ========== PROFESSIONAL WRITER (Emails, proposals, reports) ==========
         if ProfessionalWriterHandler.is_writing_request(original_message):
             writing_response = ProfessionalWriterHandler.handle_writing_request(original_message)
             if writing_response:
                 JAIMemory.save_conversation(client_id, original_message, writing_response)
-                return writing_response
+                return TextFormatter.format_all(writing_response)
         
         # ========== CURRENCY CONVERSION ==========
         currency_result = JAICurrency.detect_and_convert(original_message)
         if currency_result:
             JAIMemory.save_conversation(client_id, original_message, currency_result)
-            return currency_result
+            return TextFormatter.format_all(currency_result)
         
         # ========== WEATHER ==========
         weather_response = Weather.detect_weather_query(original_message)
         if weather_response:
             JAIMemory.save_conversation(client_id, original_message, weather_response)
-            return weather_response
+            return TextFormatter.format_all(weather_response)
         
         # ========== CALCULATIONS ==========
         percent_match = re.search(r'(\d+)\s*percent\s*of\s*(\d+)', msg)
@@ -104,7 +106,7 @@ class JAIPersonality:
             calc_result = Calculator.calculate(original_message)
             if calc_result:
                 JAIMemory.save_conversation(client_id, original_message, calc_result)
-                return calc_result
+                return TextFormatter.format_all(calc_result)
         
         has_numbers = len(re.findall(r'\d+', original_message)) >= 2
         has_math_op = any(op in msg for op in ['+', '-', '*', '/', '%'])
@@ -112,34 +114,33 @@ class JAIPersonality:
             calc_result = Calculator.calculate(original_message)
             if calc_result:
                 JAIMemory.save_conversation(client_id, original_message, calc_result)
-                return calc_result
+                return TextFormatter.format_all(calc_result)
         
         # ========== TIME & DATE ==========
         if "time" in msg:
             time_response = TimeService.get_time()
             JAIMemory.save_conversation(client_id, original_message, time_response)
-            return time_response
+            return TextFormatter.format_all(time_response)
         if "date" in msg:
             date_response = TimeService.get_date()
             JAIMemory.save_conversation(client_id, original_message, date_response)
-            return date_response
+            return TextFormatter.format_all(date_response)
         
-        # ========== LEARNED RESPONSES (TEACH FUNCTIONALITY) ==========
+        # ========== LEARNED RESPONSES ==========
         taught_response = JAIMemory.get_taught_response(client_id, original_message)
         if taught_response:
             JAIMemory.save_conversation(client_id, original_message, taught_response)
-            return taught_response
+            return TextFormatter.format_all(taught_response)
         
         next_time_response = JAIMemory.get_next_time_say_response(client_id, original_message)
         if next_time_response:
             JAIMemory.save_conversation(client_id, original_message, next_time_response)
-            return next_time_response
+            return TextFormatter.format_all(next_time_response)
         
         # ========== CHECK FOR GENERAL KNOWLEDGE QUESTIONS ==========
         clean_msg = msg.strip()
         clean_msg = re.sub(r'\?{3,}', '?', clean_msg)
         
-        # Expanded general knowledge patterns
         general_knowledge_patterns = [
             r'who created', r'who founded', r'who invented', r'who discovered',
             r'who is', r'who was', r'who are',
@@ -152,13 +153,7 @@ class JAIPersonality:
             r'what does .+ mean', r'what is .+ called',
             r'can you tell me', r'do you know', r'i want to know',
             r'please explain', r'help me understand',
-            # Capital cities and facts
-            r'capital of', r'capital city', r'what is the capital',
-            r'population of', r'area of', r'currency of',
-            r'largest city', r'biggest city', r'official language',
-            r'president of', r'prime minister of', r'king of', r'queen of',
-            r'founded in', r'established in', r'created in', r'built in',
-            r'located in', r'situated in', r'famous for', r'known for'
+            r'capital of', r'population of', r'currency of'
         ]
         
         is_general_knowledge = False
@@ -168,30 +163,22 @@ class JAIPersonality:
                 logger.info(f"General knowledge detected: {pattern}")
                 break
         
-        # Check for question mark
         has_question_mark = '?' in original_message or '？' in original_message
-        if has_question_mark:
-            is_general_knowledge = True
-            logger.info("General knowledge detected: question mark")
-        
-        # Check if message starts with question words
         question_start_words = ['what', 'who', 'where', 'when', 'why', 'how', 'which', 'whose', 'whom']
         starts_with_question = any(clean_msg.startswith(word) for word in question_start_words)
-        if starts_with_question:
-            is_general_knowledge = True
-            logger.info("General knowledge detected: starts with question word")
         
-        # Check for short questions
+        if has_question_mark or starts_with_question:
+            is_general_knowledge = True
+        
         if len(clean_msg) < 50 and has_question_mark:
             is_general_knowledge = True
-            logger.info("General knowledge detected: short question pattern")
         
         if is_general_knowledge:
             logger.info(f"Searching online for: {original_message}")
             search_result = WebSearch.search_online(original_message)
             if search_result:
                 JAIMemory.save_conversation(client_id, original_message, search_result)
-                return search_result
+                return TextFormatter.format_all(search_result)
         
         # ========== CASUAL RESPONSES ==========
         user_facts = JAIMemory.get_user_facts(client_id)
@@ -199,7 +186,7 @@ class JAIPersonality:
         casual_response = JAICasual.get_casual_response(original_message, user_name)
         if casual_response:
             JAIMemory.save_conversation(client_id, original_message, casual_response)
-            return casual_response
+            return TextFormatter.format_all(casual_response)
         
         # ========== LEARNING PATTERNS ==========
         next_time_pattern = re.search(r'next time .+? say[s]? ["\']?(.+?)["\']?\s+(?:say|respond with) ["\']?(.+?)["\']?', msg, re.IGNORECASE)
@@ -209,7 +196,7 @@ class JAIPersonality:
             JAIMemory.learn_next_time_say(client_id, trigger, response)
             result = f"📚 Got it! When someone says '{trigger}', I'll respond with '{response}'"
             JAIMemory.save_conversation(client_id, original_message, result)
-            return result
+            return TextFormatter.format_all(result)
         
         teach_pattern = re.search(r'teach ["\']?(.+?)["\']?\s*->\s*["\']?(.+?)["\']?', msg, re.IGNORECASE)
         if teach_pattern:
@@ -218,30 +205,30 @@ class JAIPersonality:
             JAIMemory.teach_response(client_id, trigger, response)
             result = f"✅ Learned! '{trigger}' -> '{response}'"
             JAIMemory.save_conversation(client_id, original_message, result)
-            return result
+            return TextFormatter.format_all(result)
         
         # ========== INTENT & NATURAL ==========
         intent = JAINLP.extract_intent(original_message)
         intent_response = JAIIntent.get_response(intent)
         if intent_response:
             JAIMemory.save_conversation(client_id, original_message, intent_response)
-            return intent_response
+            return TextFormatter.format_all(intent_response)
         
         natural = JAINatural.get_natural_response(original_message)
         if natural:
             JAIMemory.save_conversation(client_id, original_message, natural)
-            return natural
+            return TextFormatter.format_all(natural)
         
         conv = JAIConversational.get_response(original_message)
         if conv:
             JAIMemory.save_conversation(client_id, original_message, conv)
-            return conv
+            return TextFormatter.format_all(conv)
         
         # ========== PROFESSIONAL WRITER FALLBACK ==========
         if any(w in msg for w in ['write', 'draft', 'compose', 'email', 'letter', 'proposal']):
             response = ProfessionalWriterHandler.get_writing_help()
             JAIMemory.save_conversation(client_id, original_message, response)
-            return response
+            return TextFormatter.format_all(response)
         
         # ========== DEFAULT FALLBACK ==========
         user_facts = JAIMemory.get_user_facts(client_id)
@@ -258,4 +245,4 @@ class JAIPersonality:
         
         response = random.choice(fallbacks)
         JAIMemory.save_conversation(client_id, original_message, response)
-        return response
+        return TextFormatter.format_all(response)
