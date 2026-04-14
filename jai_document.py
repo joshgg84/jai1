@@ -102,10 +102,10 @@ class DocumentHandler:
         summary = f"{icon} **DOCUMENT SUMMARY: '{filename}'**\n\n"
         summary += f"📊 **Stats:** {len(text)} characters, {len(text.split())} words\n"
         summary += f"📁 **Type:** {doc_type}\n\n"
-        summary += f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        summary += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         
         # Main content
-        summary += f"**📖 MAIN CONTENT:**\n\n"
+        summary += "**📖 MAIN CONTENT:**\n\n"
         
         key_points = sentences[:10]
         for i, point in enumerate(key_points, 1):
@@ -113,13 +113,13 @@ class DocumentHandler:
                 point = point[:300] + "..."
             summary += f"{i}. {point}\n\n"
         
-        summary += f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        summary += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         
-        # Helpful提示
-        summary += f"💡 **You can ask me:**\n"
-        summary += f"• 'Explain this document in simple terms'\n"
-        summary += f"• 'What are the key points?'\n"
-        summary += f"• 'Tell me about [specific section]'\n"
+        # Helpful tips
+        summary += "**💡 You can ask me:**\n"
+        summary += "• 'Explain this document in simple terms'\n"
+        summary += "• 'What are the key points?'\n"
+        summary += "• 'Tell me about a specific section'\n"
         
         return summary
     
@@ -148,12 +148,11 @@ class DocumentHandler:
         if lines:
             simplified += f"**📝 Content:**\n\n"
             for i, line in enumerate(lines, 1):
-                # Clean up the line
                 clean_line = line[:200] + '...' if len(line) > 200 else line
                 simplified += f"{i}. {clean_line}\n\n"
         
-        simplified += f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        simplified += f"💡 **Ask me:** 'Explain this document' or 'What are the key points?'"
+        simplified += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        simplified += "💡 **Ask me:** 'Explain this document' or 'What are the key points?'"
         
         return simplified
     
@@ -191,12 +190,29 @@ class DocumentHandler:
         filename = doc['filename']
         question_lower = question.lower().strip()
         
-        # ========== SUMMARY REQUESTS ==========
-        if any(word in question_lower for word in ['summarize', 'summary', 'overview', 'gist', 'what is this about', 'tell me about it']):
-            return DocumentHandler.generate_long_summary(content, filename)
+        # ========== SUMMARY REQUESTS (FLEXIBLE PATTERNS) ==========
+        # This catches the frontend message "Simplify this document for me. Break it down step by step."
+        summary_patterns = [
+            r'summarize',
+            r'summary',
+            r'overview',
+            r'gist',
+            r'what is this about',
+            r'tell me about it',
+            r'explain the document',
+            r'simplify',                    # catches "simplify this document"
+            r'break it down',               # catches "break it down step by step"
+            r'step by step',                # catches "step by step"
+            r'give me the main points',
+            r'what\'s in this document'
+        ]
+        
+        for pattern in summary_patterns:
+            if re.search(pattern, question_lower):
+                return DocumentHandler.generate_long_summary(content, filename)
         
         # ========== SIMPLE EXPLANATION ==========
-        if any(word in question_lower for word in ['explain simply', 'simple terms', 'easy explanation', 'break it down']):
+        if any(word in question_lower for word in ['explain simply', 'simple terms', 'easy explanation', 'for a beginner']):
             sentences = re.split(r'[.!?\n]+', content)
             sentences = [s.strip() for s in sentences if len(s.strip()) > 20][:8]
             
@@ -239,5 +255,25 @@ class DocumentHandler:
                     response += f"• {sent}\n\n"
                 return response
         
+        # ========== CODE EXPLANATION ==========
+        if any(word in question_lower for word in ['what does this code do', 'explain the code', 'how does this code work']):
+            code_lines = [l for l in content.split('\n') if any(k in l for k in ['const', 'let', 'var', 'function', '=>', 'import', 'require'])]
+            
+            if code_lines:
+                explanation = "💻 **CODE EXPLANATION:**\n\n"
+                explanation += "This code appears to:\n\n"
+                
+                if any('http' in l.lower() for l in code_lines):
+                    explanation += "• Create an HTTP web server\n"
+                if any('fs' in l.lower() for l in code_lines):
+                    explanation += "• Handle file system operations\n"
+                if any('path' in l.lower() for l in code_lines):
+                    explanation += "• Manage file paths\n"
+                if any('cors' in l.lower() for l in code_lines):
+                    explanation += "• Configure CORS for security\n"
+                
+                explanation += "\n💡 Ask me about specific parts for more details."
+                return explanation
+        
         # ========== FALLBACK ==========
-        return f"📖 **I can help you understand '{filename}'.**\n\nTry asking:\n• 'Summarize this document'\n• 'Explain in simple terms'\n• 'What are the key points?'"
+        return f"📖 **I can help you understand '{filename}'.**\n\nTry asking:\n• 'Summarize this document'\n• 'Explain in simple terms'\n• 'What are the key points?'\n• 'Tell me about [specific topic]'"
