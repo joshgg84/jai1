@@ -222,8 +222,8 @@ class DocumentHandler:
         if any(word in question_lower for word in ['summarize', 'summary', 'overview', 'gist', 'what is this about', 'tell me about it', 'explain the document']):
             return DocumentHandler.generate_long_summary(content, filename)
         
-        # ========== EXPLAIN IN SIMPLE TERMS (LONGER VERSION) ==========
-        if any(word in question_lower for word in ['explain simply', 'simple terms', 'easy explanation', 'for a beginner', 'explain like']):
+        # ========== EXPLAIN IN SIMPLE TERMS (LONGER VERSION WITH DETAILED KEY POINTS) ==========
+        if any(word in question_lower for word in ['explain simply', 'simple terms', 'easy explanation', 'for a beginner', 'explain like', 'break it down']):
             # Get more sentences for a longer explanation
             sentences = re.split(r'[.!?\n]+', content)
             sentences = [s.strip() for s in sentences if len(s.strip()) > 20][:12]
@@ -235,25 +235,63 @@ class DocumentHandler:
             # Add context about the document type
             if 'resume' in filename.lower() or 'cv' in filename.lower():
                 simple_explanation += "**📄 This is a Resume/CV document** - It contains information about a person's professional background.\n\n"
-                simple_explanation += "**Key sections found in this document:**\n\n"
+                simple_explanation += "**Key sections found in this document with detailed explanations:**\n\n"
+                
+                # Extract and explain each key point in detail
+                for i, sent in enumerate(sentences[:8], 1):
+                    if len(sent) > 200:
+                        sent = sent[:200] + "..."
+                    simple_explanation += f"**Point {i}: {sent}**\n\n"
+                    # Add detailed explanation for each point
+                    if 'jalingo' in sent.lower() or 'taraba' in sent.lower():
+                        simple_explanation += f"➡️ **What this means:** The person is located in Jalingo, Taraba State, Nigeria. This tells us their geographical base and potential work location.\n\n"
+                    elif 'phone' in sent.lower() or 'email' in sent.lower():
+                        simple_explanation += f"➡️ **What this means:** These are the person's contact details - a phone number and email address. Employers or recruiters can use these to reach out.\n\n"
+                    elif 'portfolio' in sent.lower():
+                        simple_explanation += f"➡️ **What this means:** This person has an online portfolio showcasing their work. This is valuable for demonstrating their skills and experience.\n\n"
+                    elif 'experience' in sent.lower() or 'work' in sent.lower():
+                        simple_explanation += f"➡️ **What this means:** This describes the person's professional background - where they've worked and what they've accomplished.\n\n"
+                    elif 'education' in sent.lower() or 'degree' in sent.lower() or 'university' in sent.lower():
+                        simple_explanation += f"➡️ **What this means:** This shows the person's educational qualifications - their degrees, certifications, and academic background.\n\n"
+                    elif 'skill' in sent.lower():
+                        simple_explanation += f"➡️ **What this means:** These are the technical and soft skills this person possesses. Skills are what they're good at doing.\n\n"
+                    else:
+                        simple_explanation += f"➡️ **What this means:** This is important information from the document that describes something about the person or their work.\n\n"
+                
             elif 'code' in filename.lower() or '.js' in filename.lower() or '.py' in filename.lower():
                 simple_explanation += "**💻 This is a Code document** - It contains programming instructions.\n\n"
-                simple_explanation += "**What this code appears to do:**\n\n"
+                simple_explanation += "**What this code does (detailed breakdown):**\n\n"
+                
+                for i, sent in enumerate(sentences[:8], 1):
+                    if len(sent) > 200:
+                        sent = sent[:200] + "..."
+                    simple_explanation += f"**Part {i}: {sent}**\n\n"
+                    if 'const' in sent.lower() or 'let' in sent.lower():
+                        simple_explanation += f"➡️ **What this does:** This creates a variable to store information that the program will use later.\n\n"
+                    elif 'function' in sent.lower():
+                        simple_explanation += f"➡️ **What this does:** This defines a reusable block of code that performs a specific task.\n\n"
+                    elif 'http' in sent.lower() or 'server' in sent.lower():
+                        simple_explanation += f"➡️ **What this does:** This sets up a web server that can respond to requests from browsers or apps.\n\n"
+                    elif 'fs' in sent.lower():
+                        simple_explanation += f"➡️ **What this does:** This allows the program to read, write, and manage files on the computer.\n\n"
+                    else:
+                        simple_explanation += f"➡️ **What this does:** This is an instruction that tells the computer what to do.\n\n"
             else:
-                simple_explanation += "**📄 Document Overview:**\n\n"
-            
-            for i, sent in enumerate(sentences, 1):
-                # Shorten very long sentences but keep meaning
-                if len(sent) > 200:
-                    sent = sent[:200] + "..."
-                simple_explanation += f"{i}. {sent}\n\n"
+                simple_explanation += "**📄 Document Overview with Detailed Breakdown:**\n\n"
+                
+                for i, sent in enumerate(sentences[:8], 1):
+                    if len(sent) > 200:
+                        sent = sent[:200] + "..."
+                    simple_explanation += f"**Key Point {i}: {sent}**\n\n"
+                    simple_explanation += f"➡️ **Explanation:** This point is important because it tells us something significant about the document's content. It helps us understand the main message.\n\n"
             
             simple_explanation += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            simple_explanation += "💡 **Want me to go deeper?** Ask me:\n"
-            simple_explanation += "• 'Tell me more about [specific section]'\n"
+            simple_explanation += "💡 **Want to go even deeper?** Ask me:\n"
+            simple_explanation += "• 'Tell me more about [specific point]'\n"
             simple_explanation += "• 'What does this mean for me?'\n"
-            simple_explanation += "• 'Explain [specific term] in more detail'\n\n"
-            simple_explanation += "I'm here to help you fully understand this document!"
+            simple_explanation += "• 'Explain [specific term] in more detail'\n"
+            simple_explanation += "• 'Why is this important?'\n\n"
+            simple_explanation += "I'm here to help you fully understand every part of this document!"
             return simple_explanation
         
         # ========== EXPLAIN SPECIFIC TOPIC IN DETAIL ==========
@@ -273,7 +311,8 @@ class DocumentHandler:
                 explanation = f"📖 **DETAILED EXPLANATION OF '{topic.title()}' IN '{filename}':**\n\n"
                 explanation += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 for i, sent in enumerate(relevant_sentences[:5], 1):
-                    explanation += f"{i}. {sent}\n\n"
+                    explanation += f"**Found {i}: {sent}**\n\n"
+                    explanation += f"➡️ **What this means:** This section contains important information about {topic}. It tells us that {topic} is relevant to this document.\n\n"
                 explanation += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 explanation += "💡 **Does this answer your question?** I can provide even more detail if needed!\n"
                 explanation += "• Ask 'Tell me more about this'\n"
@@ -283,6 +322,36 @@ class DocumentHandler:
             else:
                 return f"I couldn't find specific information about '{topic}' in this document. Could you rephrase your question or ask about something else?"
         
+        # ========== TELL ME MORE ABOUT SPECIFIC POINT ==========
+        if any(word in question_lower for word in ['tell me more about', 'elaborate on', 'explain further', 'more detail about']):
+            # Extract what they want more detail on
+            detail_match = re.search(r'(?:tell me more about|elaborate on|explain further|more detail about)\s+(.+?)(?:\?|$)', question_lower)
+            if detail_match:
+                topic = detail_match.group(1).strip()
+                sentences = re.split(r'[.!?\n]+', content)
+                relevant_sentences = []
+                
+                for sentence in sentences:
+                    if topic.lower() in sentence.lower() and len(sentence) > 20:
+                        relevant_sentences.append(sentence.strip())
+                
+                if relevant_sentences:
+                    detailed_explanation = f"📖 **MORE DETAILS ABOUT '{topic.title()}':**\n\n"
+                    detailed_explanation += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    for i, sent in enumerate(relevant_sentences[:4], 1):
+                        detailed_explanation += f"**Reference {i}:**\n{sent}\n\n"
+                        detailed_explanation += f"**Detailed Breakdown:**\n"
+                        # Break down the sentence into key components
+                        words = sent.split()
+                        if len(words) > 10:
+                            detailed_explanation += f"This sentence contains {len(words)} words and conveys important information about {topic}.\n"
+                            detailed_explanation += f"The key message here is that {topic} is significant to understanding this document.\n\n"
+                        else:
+                            detailed_explanation += f"This is a concise statement about {topic} that directly tells us something important.\n\n"
+                    detailed_explanation += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    detailed_explanation += "💡 **Would you like me to explain any other part of the document?**"
+                    return detailed_explanation
+        
         # ========== CODE EXPLANATION (DETAILED) ==========
         if any(word in question_lower for word in ['what does this code do', 'explain the code', 'how does this code work', 'what is this code for']):
             # Find code blocks or technical content
@@ -291,51 +360,61 @@ class DocumentHandler:
             if code_lines:
                 explanation = "💻 **DETAILED CODE EXPLANATION:**\n\n"
                 explanation += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                explanation += "**What this code does:**\n\n"
+                explanation += "**What this code does (line by line breakdown):**\n\n"
                 
-                # Analyze code purpose
-                if any('http' in l.lower() for l in code_lines):
-                    explanation += "• **HTTP Server:** This code creates a web server that listens for incoming requests from browsers or other applications.\n\n"
-                if any('fs' in l.lower() for l in code_lines):
-                    explanation += "• **File System Operations:** This code can read, write, and manage files on the computer's storage.\n\n"
-                if any('path' in l.lower() for l in code_lines):
-                    explanation += "• **Path Management:** This code handles file and directory paths, making sure they work across different operating systems.\n\n"
-                if any('cors' in l.lower() for l in code_lines):
-                    explanation += "• **CORS Configuration:** This code controls which websites are allowed to access this server (important for security).\n\n"
-                if any('vulnerable' in l.lower() for l in code_lines):
-                    explanation += "• **⚠️ Security Note:** This code contains intentional vulnerabilities meant for learning about security risks.\n\n"
+                # Analyze each code line
+                for i, line in enumerate(code_lines[:10], 1):
+                    explanation += f"**Line {i}:** `{line[:100]}`\n"
+                    if 'const' in line.lower() or 'let' in line.lower():
+                        explanation += f"➡️ **This creates a variable** - It stores information that the program will use later.\n\n"
+                    elif 'function' in line.lower():
+                        explanation += f"➡️ **This defines a function** - A reusable block of code that performs a specific task when called.\n\n"
+                    elif 'http' in line.lower():
+                        explanation += f"➡️ **This sets up HTTP functionality** - It allows the program to communicate over the web.\n\n"
+                    elif 'app.' in line.lower():
+                        explanation += f"➡️ **This configures the app** - It sets up how the application should behave.\n\n"
+                    elif 'listen' in line.lower():
+                        explanation += f"➡️ **This starts the server** - It begins listening for incoming connections.\n\n"
+                    else:
+                        explanation += f"➡️ **This is an instruction** - It tells the computer to do something specific.\n\n"
                 
-                explanation += "**How it works step by step:**\n\n"
-                explanation += "1. The server starts and listens for connections on a specific port\n"
-                explanation += "2. When a request comes in, the server processes it based on the URL path\n"
-                explanation += "3. The server sends back a response (HTML, JSON, or other data)\n"
-                explanation += "4. Error handling catches any issues that might occur\n\n"
+                explanation += "**How it all works together:**\n\n"
+                explanation += "1. The program loads required modules and sets up configurations\n"
+                explanation += "2. It defines how to respond to different types of requests\n"
+                explanation += "3. The server starts and waits for connections\n"
+                explanation += "4. When a request comes in, it processes it and sends back a response\n"
+                explanation += "5. Error handling catches any issues that might occur\n\n"
                 
                 explanation += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 explanation += "💡 **Want to learn more? Ask me:**\n"
                 explanation += "• 'What is a web server?'\n"
                 explanation += "• 'How do I run this code?'\n"
-                explanation += "• 'What are the security risks here?'\n"
+                explanation += "• 'What are the security implications?'\n"
                 explanation += "• 'How can I improve this code?'"
                 return explanation
             else:
                 return "This appears to be a text document. Ask me to summarize it or explain specific parts in detail!"
         
-        # ========== KEY POINTS WITH DETAILS ==========
+        # ========== KEY POINTS WITH DETAILED EXPLANATIONS ==========
         if any(word in question_lower for word in ['key points', 'main points', 'important', 'takeaways', 'what matters', 'most important']):
             sentences = re.split(r'[.!?\n]+', content)
             sentences = [s.strip() for s in sentences if len(s.strip()) > 30][:8]
             
-            response = f"📌 **KEY POINTS FROM '{filename}' (WITH DETAILS):**\n\n"
+            response = f"📌 **KEY POINTS FROM '{filename}' (WITH DETAILED EXPLANATIONS):**\n\n"
             response += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             for i, sent in enumerate(sentences, 1):
                 if len(sent) > 250:
                     sent = sent[:250] + "..."
-                response += f"{i}. {sent}\n\n"
+                response += f"**Key Point {i}:** {sent}\n\n"
+                response += f"**📖 Detailed Explanation:** This point is significant because it captures essential information from the document. "
+                response += f"It tells us something important about the subject matter and helps us understand the overall message. "
+                response += f"When you read this, you should pay attention because it directly relates to the main purpose of the document.\n\n"
+                response += f"➡️ **Why this matters:** Understanding this point helps you grasp the bigger picture and apply this knowledge practically.\n\n"
             response += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            response += f"💡 **Would you like me to elaborate on any of these points?** Just ask!\n"
-            response += f"• 'Tell me more about point {sentences[0][:30]}...'\n"
-            response += f"• 'Explain the first point in detail'"
+            response += f"💡 **Would you like me to elaborate on any of these key points?** Just ask!\n"
+            response += f"• 'Tell me more about point 1'\n"
+            response += f"• 'Explain the first point in even more detail'\n"
+            response += f"• 'What does point {len(sentences)} mean for me?'"
             return response
         
         # ========== GENERAL DETAILED EXPLANATION ==========
@@ -359,20 +438,22 @@ class DocumentHandler:
             for i, sent in enumerate(relevant_sentences[:4], 1):
                 if len(sent) > 300:
                     sent = sent[:300] + "..."
-                explanation += f"{i}. {sent}\n\n"
+                explanation += f"**Found {i}:** {sent}\n\n"
+                explanation += f"**📖 What this means:** This text directly relates to your question. It shows that the document contains information about what you're asking.\n\n"
             explanation += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             explanation += "💡 **Need more detail?** Try asking:\n"
-            explanation += "• 'Explain this in more depth'\n"
+            explanation += "• 'Explain this in even more depth'\n"
             explanation += "• 'What does this mean practically?'\n"
-            explanation += "• 'Give me examples of this'"
+            explanation += "• 'Give me examples of this'\n"
+            explanation += "• 'Why is this information important?'"
             return explanation
         
         # ========== FALLBACK - OFFER DETAILED HELP ==========
         return f"📖 **I'm here to help you understand '{filename}' in detail!**\n\n" \
                f"Try asking me:\n\n" \
-               f"• 'Explain this document in simple terms' - I'll break it down for you\n" \
-               f"• 'What are the key points?' - I'll list the most important information\n" \
-               f"• 'Tell me about [specific topic]' - I'll find and explain that section\n" \
-               f"• 'What does this code do?' - I'll explain the code step by step\n" \
-               f"• 'Explain this like I'm 5' - I'll use very simple language\n\n" \
+               f"• 'Explain this document in simple terms' - I'll break it down point by point\n" \
+               f"• 'What are the key points?' - I'll list and explain each important point\n" \
+               f"• 'Tell me about [specific topic]' - I'll find and explain that section in detail\n" \
+               f"• 'What does this code do?' - I'll explain the code line by line\n" \
+               f"• 'Explain this like I'm 5' - I'll use very simple language with examples\n\n" \
                f"What would you like me to explain in detail?"
