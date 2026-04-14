@@ -104,6 +104,10 @@ class DocumentHandler:
         if any(word in text_lower for word in ['report', 'analysis', 'findings', 'recommendations', 'executive summary']):
             return "Report", "📊"
         
+        # Technical documentation
+        if any(word in text_lower for word in ['api', 'endpoint', 'request', 'response', 'authentication']):
+            return "Technical Documentation", "📘"
+        
         # Default
         return "Document", "📄"
     
@@ -332,8 +336,13 @@ Your detailed explanation:"""
             if re.search(pattern, question_lower):
                 return DocumentHandler.generate_long_summary(content, filename)
         
+        # ========== HANDLE SIMPLE "EXPLAIN" COMMAND ==========
+        # If user just says "explain" or "tell me", provide a detailed explanation
+        if question_lower in ['explain', 'tell me', 'explain this', 'what is this', 'tell me about it', 'explain it']:
+            return DocumentHandler._get_ai_explanation(content, filename, "Explain this document in detail")
+        
         # ========== USE INTERNAL AI TO ACTUALLY EXPLAIN ==========
-        # Try to get an intelligent, detailed explanation from internal AI (no HTTP timeout)
+        # For any other question, get an intelligent explanation
         ai_explanation = DocumentHandler._get_ai_explanation(content, filename, question)
         if ai_explanation and len(ai_explanation) > 50:
             return ai_explanation
