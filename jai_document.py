@@ -190,8 +190,7 @@ class DocumentHandler:
         filename = doc['filename']
         question_lower = question.lower().strip()
         
-        # ========== SUMMARY REQUESTS (FLEXIBLE PATTERNS) ==========
-        # This catches the frontend message "Simplify this document for me. Break it down step by step."
+        # ========== SUMMARY REQUESTS ==========
         summary_patterns = [
             r'summarize',
             r'summary',
@@ -200,9 +199,9 @@ class DocumentHandler:
             r'what is this about',
             r'tell me about it',
             r'explain the document',
-            r'simplify',                    # catches "simplify this document"
-            r'break it down',               # catches "break it down step by step"
-            r'step by step',                # catches "step by step"
+            r'simplify',
+            r'break it down',
+            r'step by step',
             r'give me the main points',
             r'what\'s in this document'
         ]
@@ -211,36 +210,43 @@ class DocumentHandler:
             if re.search(pattern, question_lower):
                 return DocumentHandler.generate_long_summary(content, filename)
         
-        # ========== SIMPLE EXPLANATION ==========
-        if any(word in question_lower for word in ['explain simply', 'simple terms', 'easy explanation', 'for a beginner']):
+        # ========== SIMPLE EXPLANATION (HANDLE "explain" ALONE) ==========
+        # If user just says "explain" or "explain this" without more context
+        if question_lower == 'explain' or question_lower == 'explain this' or (question_lower.startswith('explain') and len(question_lower) < 15):
+            # Get first few key sentences from the document
             sentences = re.split(r'[.!?\n]+', content)
-            sentences = [s.strip() for s in sentences if len(s.strip()) > 20][:8]
+            sentences = [s.strip() for s in sentences if len(s.strip()) > 30][:8]
             
-            explanation = f"📖 **SIMPLE EXPLANATION OF '{filename}':**\n\n"
-            
-            for i, sent in enumerate(sentences, 1):
-                if len(sent) > 200:
-                    sent = sent[:200] + "..."
-                explanation += f"{i}. {sent}\n\n"
-            
-            explanation += f"\n💡 Ask me for more details about any point."
-            return explanation
+            if sentences:
+                explanation = f"📖 **EXPLANATION OF '{filename}':**\n\n"
+                for i, sent in enumerate(sentences, 1):
+                    if len(sent) > 250:
+                        sent = sent[:250] + "..."
+                    explanation += f"{i}. {sent}\n\n"
+                explanation += "\n💡 Ask me for more details about any specific part."
+                return explanation
+            else:
+                return f"📖 I can help explain '{filename}'. What would you like to know? Try asking about a specific section."
         
         # ========== KEY POINTS ==========
         if any(word in question_lower for word in ['key points', 'main points', 'important', 'takeaways']):
             sentences = re.split(r'[.!?\n]+', content)
             sentences = [s.strip() for s in sentences if len(s.strip()) > 30][:6]
             
-            response = f"📌 **KEY POINTS FROM '{filename}':**\n\n"
-            for i, sent in enumerate(sentences, 1):
-                if len(sent) > 200:
-                    sent = sent[:200] + "..."
-                response += f"{i}. {sent}\n\n"
-            return response
+            if sentences:
+                response = f"📌 **KEY POINTS FROM '{filename}':**\n\n"
+                for i, sent in enumerate(sentences, 1):
+                    if len(sent) > 200:
+                        sent = sent[:200] + "..."
+                    response += f"{i}. {sent}\n\n"
+                return response
+            else:
+                return f"📌 I couldn't extract clear key points from '{filename}'. Try asking me to summarize instead."
         
         # ========== SPECIFIC TOPIC ==========
+        # Handle "explain about X" or "tell me about X"
         explain_match = re.search(r'(?:explain|tell me about|what about)\s+(?:the\s+)?([a-zA-Z\s]+?)(?:\?|$)', question_lower)
-        if explain_match:
+        if explain_match and len(explain_match.group(1)) > 3:
             topic = explain_match.group(1).strip()
             
             sentences = re.split(r'[.!?\n]+', content)
@@ -254,6 +260,8 @@ class DocumentHandler:
                 for sent in relevant[:3]:
                     response += f"• {sent}\n\n"
                 return response
+            else:
+                return f"I couldn't find information about '{topic}' in '{filename}'. Try asking about something else or ask me to summarize the whole document."
         
         # ========== CODE EXPLANATION ==========
         if any(word in question_lower for word in ['what does this code do', 'explain the code', 'how does this code work']):
@@ -275,5 +283,16 @@ class DocumentHandler:
                 explanation += "\n💡 Ask me about specific parts for more details."
                 return explanation
         
-        # ========== FALLBACK ==========
-        return f"📖 **I can help you understand '{filename}'.**\n\nTry asking:\n• 'Summarize this document'\n• 'Explain in simple terms'\n• 'What are the key points?'\n• 'Tell me about [specific topic]'"
+        # ========== FALLBACK - Show document preview ==========
+        # Show first few lines of the document as a preview
+        lines = content.split('\n')
+        preview_lines = [l.strip() for l in lines if l.strip() and len(l.strip()) > 10][:5]
+        
+        if preview_lines:
+            preview = f"📄 **From '{filename}':**\n\n"
+            for line in preview_lines:
+                preview += f"• {line[:150]}{'...' if len(line) > 150 else ''}\n"
+            preview += f"\n💡 Try asking: 'Summarize this document' or 'Explain the key points'"
+            return preview
+        
+        return f"📖 **I can help you understand '{filename}'.**\n\nTry asking:\n• 'Summarize this document'\n• 'Explain the key points'\n• 'Tell me about [specific topic]'"
