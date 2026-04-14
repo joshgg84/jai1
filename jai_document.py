@@ -197,13 +197,16 @@ class DocumentHandler:
         return client_id in _user_documents
     
     @staticmethod
-    def _call_jai_for_explanation(content, filename, question):
-        """Use JAI to actually explain the document content with detailed, long explanations"""
+    def _get_ai_explanation(content, filename, question):
+        """Get AI explanation using internal call (no HTTP timeout)"""
         try:
+            # Import here to avoid circular import
+            from jai_core import JAIPersonality
+            
             # Take a larger portion of the document for better context
             doc_excerpt = content[:4000] if len(content) > 4000 else content
             
-            # Build a detailed prompt for JAI to provide LONG explanations
+            # Build a detailed prompt for explanation
             prompt = f"""You are an AI assistant analyzing a document. Provide a VERY DETAILED, COMPREHENSIVE explanation.
 
 DOCUMENT NAME: {filename}
@@ -226,7 +229,6 @@ INSTRUCTIONS FOR YOUR RESPONSE:
    - Their location
    - Their skills and technologies
    - Their experience and projects
-   - Their education
 6. If it's meeting notes, summarize:
    - Key decisions made
    - Action items with owners
@@ -235,25 +237,20 @@ INSTRUCTIONS FOR YOUR RESPONSE:
 
 Your detailed explanation:"""
             
-            # Call JAI API with longer timeout
-            response = requests.post(
-                "https://jai1-sh81.onrender.com/api/chat",
-                json={"message": prompt, "clientId": "document_explainer", "options": {"speech": False}},
-                timeout=45
+            # Call JAI internally (no HTTP overhead)
+            response = JAIPersonality.get_response(
+                message=prompt,
+                client_id="document_explainer"
             )
-            if response.status_code == 200:
-                data = response.json()
-                result = data.get("response", None)
-                if result and len(result) > 50:
-                    return result
-            return None
+            
+            return response if response and len(response) > 50 else None
         except Exception as e:
-            logger.error(f"JAI explanation error: {e}")
+            logger.error(f"Internal AI explanation error: {e}")
             return None
     
     @staticmethod
     def _get_detailed_code_explanation(content, filename):
-        """Provide a detailed explanation for code files when JAI is unavailable"""
+        """Provide a detailed explanation for code files when AI is unavailable"""
         lines = content.split('\n')
         code_lines = [l.strip() for l in lines if l.strip() and len(l.strip()) > 5]
         
@@ -335,10 +332,10 @@ Your detailed explanation:"""
             if re.search(pattern, question_lower):
                 return DocumentHandler.generate_long_summary(content, filename)
         
-        # ========== USE JAI TO ACTUALLY EXPLAIN ==========
-        # Try to get an intelligent, detailed explanation from JAI
-        ai_explanation = DocumentHandler._call_jai_for_explanation(content, filename, question)
-        if ai_explanation and len(ai_explanation) > 100:
+        # ========== USE INTERNAL AI TO ACTUALLY EXPLAIN ==========
+        # Try to get an intelligent, detailed explanation from internal AI (no HTTP timeout)
+        ai_explanation = DocumentHandler._get_ai_explanation(content, filename, question)
+        if ai_explanation and len(ai_explanation) > 50:
             return ai_explanation
         
         # ========== FALLBACK - Provide a detailed explanation based on document type ==========
@@ -365,7 +362,6 @@ Your detailed explanation:"""
             explanation += f"• 'Summarize this document in detail'\n"
             explanation += f"• 'Explain what this document is about'\n"
             explanation += f"• 'What are the key points from this document?'\n"
-            explanation += f"• 'Tell me about [specific topic]'"
             return explanation
         
-        return f"📖 **I can help you understand '{filename}' in detail.**\n\nTry asking:\n• 'Summarize this document'\n• 'Explain what this document means'\n• 'What are the key points?'\n• 'Tell me about the main topics'"
+        return f"📖 **I can help you understand '{filename}' in detail.**\n\nTry asking:\n• 'Summarize this document'\n• 'Explain what this document means'\n• 'What are the key points?'"
