@@ -141,7 +141,7 @@ class DocumentHandler:
         if doc_type == "Resume/CV":
             summary += "• 'What is this person's name?'\n• 'What are their skills?'\n• 'Where are they located?'\n"
         elif "Code" in doc_type:
-            summary += "• 'Explain what this code does'\n• 'What are the vulnerabilities?'\n• 'How does this server work?'\n"
+            summary += "• 'Explain what this code does in detail'\n• 'What are the vulnerabilities?'\n• 'How does this server work?'\n"
         elif doc_type == "Meeting Notes":
             summary += "• 'What were the key decisions?'\n• 'What are the action items?'\n"
         else:
@@ -198,13 +198,13 @@ class DocumentHandler:
     
     @staticmethod
     def _call_jai_for_explanation(content, filename, question):
-        """Use JAI to actually explain the document content"""
+        """Use JAI to actually explain the document content with detailed, long explanations"""
         try:
-            # Take a relevant portion of the document
-            doc_excerpt = content[:2000] if len(content) > 2000 else content
+            # Take a larger portion of the document for better context
+            doc_excerpt = content[:4000] if len(content) > 4000 else content
             
-            # Build a prompt for JAI to explain
-            prompt = f"""You are an AI assistant analyzing a document.
+            # Build a detailed prompt for JAI to provide LONG explanations
+            prompt = f"""You are an AI assistant analyzing a document. Provide a VERY DETAILED, COMPREHENSIVE explanation.
 
 DOCUMENT NAME: {filename}
 DOCUMENT CONTENT:
@@ -212,32 +212,96 @@ DOCUMENT CONTENT:
 
 USER QUESTION: {question}
 
-IMPORTANT: 
-1. Read and understand the document content above
-2. Answer the user's question directly based ONLY on the document
-3. DO NOT just repeat or copy the document text
-4. EXPLAIN in your own words what the document means
-5. If it's code, explain what the code does
-6. If it's a resume, state the person's name, skills, location
-7. Be helpful and conversational
+INSTRUCTIONS FOR YOUR RESPONSE:
+1. Write a LONG, DETAILED explanation (at least 4-6 sentences, preferably more)
+2. DO NOT just repeat or copy the document text
+3. EXPLAIN in your own words what the document means
+4. If it's code, explain:
+   - What each module/function does
+   - How the different parts work together
+   - What the purpose of the code is
+   - Any security implications or vulnerabilities
+5. If it's a resume, state:
+   - The person's full name
+   - Their location
+   - Their skills and technologies
+   - Their experience and projects
+   - Their education
+6. If it's meeting notes, summarize:
+   - Key decisions made
+   - Action items with owners
+   - Important discussion points
+7. Be conversational, educational, and thorough
 
-Your explanation:"""
+Your detailed explanation:"""
             
-            # Call JAI API
+            # Call JAI API with longer timeout
             response = requests.post(
                 "https://jai1-sh81.onrender.com/api/chat",
                 json={"message": prompt, "clientId": "document_explainer", "options": {"speech": False}},
-                timeout=30
+                timeout=45
             )
             if response.status_code == 200:
                 data = response.json()
                 result = data.get("response", None)
-                if result and len(result) > 20:
+                if result and len(result) > 50:
                     return result
             return None
         except Exception as e:
             logger.error(f"JAI explanation error: {e}")
             return None
+    
+    @staticmethod
+    def _get_detailed_code_explanation(content, filename):
+        """Provide a detailed explanation for code files when JAI is unavailable"""
+        lines = content.split('\n')
+        code_lines = [l.strip() for l in lines if l.strip() and len(l.strip()) > 5]
+        
+        explanation = f"⚠️ **DETAILED CODE ANALYSIS: '{filename}'**\n\n"
+        
+        # Detect modules used
+        modules = []
+        if any('http' in l.lower() for l in code_lines):
+            modules.append("HTTP (for creating web servers)")
+        if any('fs' in l.lower() for l in code_lines):
+            modules.append("File System (fs) for reading/writing files")
+        if any('path' in l.lower() for l in code_lines):
+            modules.append("Path for handling file paths")
+        if any('cors' in l.lower() for l in code_lines):
+            modules.append("CORS for cross-origin requests")
+        
+        if modules:
+            explanation += f"**What this code is:**\n"
+            explanation += f"This is a Node.js server application that uses the following modules:\n"
+            for m in modules:
+                explanation += f"  • {m}\n"
+            explanation += "\n"
+        
+        # Explain what the code does
+        explanation += f"**What it does:**\n"
+        if any('createServer' in l for l in code_lines):
+            explanation += "• Creates an HTTP web server that listens for incoming requests\n"
+        if any('readFile' in l or 'writeFile' in l for l in code_lines):
+            explanation += "• Reads and writes files on the server's file system\n"
+        if any('listen' in l for l in code_lines):
+            explanation += "• Listens for connections on a specific port\n"
+        if any('request' in l.lower() or 'response' in l.lower() for l in code_lines):
+            explanation += "• Handles HTTP requests and sends back responses\n"
+        
+        # Security notes
+        if 'vulnerable' in filename.lower():
+            explanation += "\n**⚠️ Security Warning:**\n"
+            explanation += "This code contains intentional vulnerabilities for educational purposes:\n"
+            explanation += "• It may have insecure CORS settings (allowing any origin)\n"
+            explanation += "• It may not validate user input properly\n"
+            explanation += "• It's designed to teach you what NOT to do in production\n"
+        
+        explanation += "\n💡 For an even more detailed explanation, try asking specific questions like:\n"
+        explanation += "• 'What does the http module do?'\n"
+        explanation += "• 'How does the server handle requests?'\n"
+        explanation += "• 'What are the security risks here?'"
+        
+        return explanation
     
     @staticmethod
     def answer_question(client_id, question):
@@ -272,42 +336,36 @@ Your explanation:"""
                 return DocumentHandler.generate_long_summary(content, filename)
         
         # ========== USE JAI TO ACTUALLY EXPLAIN ==========
-        # Try to get an intelligent explanation from JAI
+        # Try to get an intelligent, detailed explanation from JAI
         ai_explanation = DocumentHandler._call_jai_for_explanation(content, filename, question)
-        if ai_explanation:
+        if ai_explanation and len(ai_explanation) > 100:
             return ai_explanation
         
-        # ========== FALLBACK - Provide a simple explanation based on document type ==========
+        # ========== FALLBACK - Provide a detailed explanation based on document type ==========
         doc_type, icon = DocumentHandler.detect_document_type(content, filename)
         
         if "Code" in doc_type or "vulnerable" in filename.lower():
-            # For code files, try to explain what the code does
-            lines = content.split('\n')
-            code_lines = [l.strip() for l in lines if l.strip() and ('const' in l or 'let' in l or 'function' in l or 'require' in l)]
-            
-            explanation = f"{icon} **About this code:**\n\n"
-            
-            if any('http' in l.lower() for l in code_lines):
-                explanation += "• This code creates an HTTP web server\n"
-            if any('fs' in l.lower() for l in code_lines):
-                explanation += "• It can read and write files using the file system (fs) module\n"
-            if any('path' in l.lower() for l in code_lines):
-                explanation += "• It handles file paths with the path module\n"
-            if 'vulnerable' in filename.lower():
-                explanation += "• ⚠️ This code contains intentional security vulnerabilities for educational purposes\n"
-            
-            explanation += "\n💡 Ask me specific questions like 'What does the http module do?' or 'Explain the vulnerabilities'"
-            return explanation
+            return DocumentHandler._get_detailed_code_explanation(content, filename)
         
-        # For any other document type
+        # For any other document type, provide a preview with more detail
         lines = content.split('\n')
-        preview_lines = [l.strip() for l in lines if l.strip() and len(l.strip()) > 15][:4]
+        meaningful_lines = [l.strip() for l in lines if l.strip() and len(l.strip()) > 20][:6]
         
-        if preview_lines:
-            explanation = f"📄 **From '{filename}':**\n\n"
-            for line in preview_lines:
-                explanation += f"• {line[:200]}{'...' if len(line) > 200 else ''}\n"
-            explanation += f"\n💡 To understand this better, try asking: 'Summarize this document' or 'Explain what this means'"
+        if meaningful_lines:
+            explanation = f"📄 **Document Analysis: '{filename}'**\n\n"
+            explanation += f"**Document Type:** {doc_type}\n"
+            explanation += f"**Total Size:** {len(content)} characters, {len(content.split())} words\n\n"
+            explanation += f"**Key excerpts from the document:**\n\n"
+            
+            for i, line in enumerate(meaningful_lines, 1):
+                explanation += f"{i}. {line[:250]}{'...' if len(line) > 250 else ''}\n\n"
+            
+            explanation += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            explanation += f"💡 **To understand this better, try asking:**\n"
+            explanation += f"• 'Summarize this document in detail'\n"
+            explanation += f"• 'Explain what this document is about'\n"
+            explanation += f"• 'What are the key points from this document?'\n"
+            explanation += f"• 'Tell me about [specific topic]'"
             return explanation
         
-        return f"📖 **I can help you understand '{filename}'.**\n\nTry asking:\n• 'Summarize this document'\n• 'Explain what this code does'\n• 'What are the key points?'"
+        return f"📖 **I can help you understand '{filename}' in detail.**\n\nTry asking:\n• 'Summarize this document'\n• 'Explain what this document means'\n• 'What are the key points?'\n• 'Tell me about the main topics'"
