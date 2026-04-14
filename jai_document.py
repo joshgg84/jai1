@@ -179,8 +179,40 @@ class DocumentHandler:
         return client_id in _user_documents
     
     @staticmethod
+    def _call_jai_for_explanation(content, filename, question):
+        """Use JAI to actually explain the document content"""
+        try:
+            # Take a relevant portion of the document (first 2000 chars for context)
+            doc_excerpt = content[:2000] if len(content) > 2000 else content
+            
+            # Build a prompt for JAI to explain
+            prompt = f"""Based on this document content, please answer the user's question in a helpful, educational way.
+
+DOCUMENT: {filename}
+CONTENT: {doc_excerpt}
+
+USER QUESTION: {question}
+
+Please provide a clear, informative explanation. If the document doesn't contain information relevant to the question, say so politely."""
+            
+            # Call JAI API
+            import requests
+            response = requests.post(
+                "https://jai1-sh81.onrender.com/api/chat",
+                json={"message": prompt, "clientId": "document_handler", "options": {"speech": False}},
+                timeout=30
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("response", None)
+            return None
+        except Exception as e:
+            logger.error(f"JAI explanation error: {e}")
+            return None
+    
+    @staticmethod
     def answer_question(client_id, question):
-        """Answer questions about the document"""
+        """Answer questions about the document using AI explanation"""
         doc = DocumentHandler.get_user_document(client_id)
         
         if not doc:
@@ -210,81 +242,14 @@ class DocumentHandler:
             if re.search(pattern, question_lower):
                 return DocumentHandler.generate_long_summary(content, filename)
         
-        # ========== SIMPLE EXPLANATION (HANDLE "explain" ALONE) ==========
-        # If user just says "explain" or "explain this" without more context
-        if question_lower == 'explain' or question_lower == 'explain this' or (question_lower.startswith('explain') and len(question_lower) < 15):
-            # Get first few key sentences from the document
-            sentences = re.split(r'[.!?\n]+', content)
-            sentences = [s.strip() for s in sentences if len(s.strip()) > 30][:8]
-            
-            if sentences:
-                explanation = f"📖 **EXPLANATION OF '{filename}':**\n\n"
-                for i, sent in enumerate(sentences, 1):
-                    if len(sent) > 250:
-                        sent = sent[:250] + "..."
-                    explanation += f"{i}. {sent}\n\n"
-                explanation += "\n💡 Ask me for more details about any specific part."
-                return explanation
-            else:
-                return f"📖 I can help explain '{filename}'. What would you like to know? Try asking about a specific section."
-        
-        # ========== KEY POINTS ==========
-        if any(word in question_lower for word in ['key points', 'main points', 'important', 'takeaways']):
-            sentences = re.split(r'[.!?\n]+', content)
-            sentences = [s.strip() for s in sentences if len(s.strip()) > 30][:6]
-            
-            if sentences:
-                response = f"📌 **KEY POINTS FROM '{filename}':**\n\n"
-                for i, sent in enumerate(sentences, 1):
-                    if len(sent) > 200:
-                        sent = sent[:200] + "..."
-                    response += f"{i}. {sent}\n\n"
-                return response
-            else:
-                return f"📌 I couldn't extract clear key points from '{filename}'. Try asking me to summarize instead."
-        
-        # ========== SPECIFIC TOPIC ==========
-        # Handle "explain about X" or "tell me about X"
-        explain_match = re.search(r'(?:explain|tell me about|what about)\s+(?:the\s+)?([a-zA-Z\s]+?)(?:\?|$)', question_lower)
-        if explain_match and len(explain_match.group(1)) > 3:
-            topic = explain_match.group(1).strip()
-            
-            sentences = re.split(r'[.!?\n]+', content)
-            relevant = []
-            for sentence in sentences:
-                if topic.lower() in sentence.lower() and len(sentence) > 20:
-                    relevant.append(sentence.strip())
-            
-            if relevant:
-                response = f"📖 **About '{topic.title()}' in '{filename}':**\n\n"
-                for sent in relevant[:3]:
-                    response += f"• {sent}\n\n"
-                return response
-            else:
-                return f"I couldn't find information about '{topic}' in '{filename}'. Try asking about something else or ask me to summarize the whole document."
-        
-        # ========== CODE EXPLANATION ==========
-        if any(word in question_lower for word in ['what does this code do', 'explain the code', 'how does this code work']):
-            code_lines = [l for l in content.split('\n') if any(k in l for k in ['const', 'let', 'var', 'function', '=>', 'import', 'require'])]
-            
-            if code_lines:
-                explanation = "💻 **CODE EXPLANATION:**\n\n"
-                explanation += "This code appears to:\n\n"
-                
-                if any('http' in l.lower() for l in code_lines):
-                    explanation += "• Create an HTTP web server\n"
-                if any('fs' in l.lower() for l in code_lines):
-                    explanation += "• Handle file system operations\n"
-                if any('path' in l.lower() for l in code_lines):
-                    explanation += "• Manage file paths\n"
-                if any('cors' in l.lower() for l in code_lines):
-                    explanation += "• Configure CORS for security\n"
-                
-                explanation += "\n💡 Ask me about specific parts for more details."
-                return explanation
+        # ========== USE JAI TO ACTUALLY EXPLAIN ==========
+        # For any other question, let JAI provide an intelligent explanation
+        if len(question_lower) > 3:
+            ai_explanation = DocumentHandler._call_jai_for_explanation(content, filename, question)
+            if ai_explanation:
+                return ai_explanation
         
         # ========== FALLBACK - Show document preview ==========
-        # Show first few lines of the document as a preview
         lines = content.split('\n')
         preview_lines = [l.strip() for l in lines if l.strip() and len(l.strip()) > 10][:5]
         
@@ -292,7 +257,7 @@ class DocumentHandler:
             preview = f"📄 **From '{filename}':**\n\n"
             for line in preview_lines:
                 preview += f"• {line[:150]}{'...' if len(line) > 150 else ''}\n"
-            preview += f"\n💡 Try asking: 'Summarize this document' or 'Explain the key points'"
+            preview += f"\n💡 Try asking: 'Summarize this document' or 'Explain what this means'"
             return preview
         
-        return f"📖 **I can help you understand '{filename}'.**\n\nTry asking:\n• 'Summarize this document'\n• 'Explain the key points'\n• 'Tell me about [specific topic]'"
+        return f"📖 **I can help you understand '{filename}'.**\n\nTry asking:\n• 'Summarize this document'\n• 'Explain what this means'\n• 'Tell me about [specific topic]'"
