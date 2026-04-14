@@ -71,28 +71,53 @@ class DocumentHandler:
             return None
     
     @staticmethod
+    def detect_document_type(text, filename):
+        """Detect the type of document"""
+        text_lower = text.lower()
+        filename_lower = filename.lower()
+        
+        # Code files
+        code_extensions = ['.js', '.py', '.java', '.cpp', '.c', '.go', '.rs', '.ts', '.jsx', '.tsx', '.html', '.css']
+        if any(filename_lower.endswith(ext) for ext in code_extensions):
+            return "Code File", "💻"
+        
+        # Resume/CV indicators
+        if 'resume' in filename_lower or 'cv' in filename_lower:
+            return "Resume/CV", "📄"
+        if any(word in text_lower for word in ['experience', 'education', 'skills', 'work history', 'employment']):
+            if any(word in text_lower for word in ['objective', 'summary', 'references']):
+                return "Resume/CV", "📄"
+        
+        # Meeting notes
+        if any(word in text_lower for word in ['meeting notes', 'meeting minutes', 'agenda', 'action items', 'attendees']):
+            return "Meeting Notes", "📝"
+        
+        # Legal documents
+        if any(word in text_lower for word in ['contract', 'agreement', 'terms and conditions', 'parties', 'hereby', 'whereas']):
+            return "Legal Document", "⚖️"
+        
+        # Reports
+        if any(word in text_lower for word in ['report', 'analysis', 'findings', 'recommendations', 'executive summary']):
+            return "Report", "📊"
+        
+        # Technical documentation
+        if any(word in text_lower for word in ['api', 'endpoint', 'request', 'response', 'authentication', 'documentation']):
+            return "Technical Documentation", "📘"
+        
+        # Meeting/Conference notes
+        if any(word in text_lower for word in ['conference', 'seminar', 'workshop', 'keynote', 'speaker']):
+            return "Conference Notes", "🎤"
+        
+        # Default
+        return "Document", "📄"
+    
+    @staticmethod
     def generate_long_summary(text, filename):
         """Generate a detailed, intelligent summary of the document"""
         text = re.sub(r'\s+', ' ', text)
         text = text.strip()
         
-        # Detect document type
-        text_lower = text.lower()
-        if 'contract' in text_lower or 'agreement' in text_lower:
-            doc_type = "Legal Document"
-            icon = "⚖️"
-        elif 'http' in text_lower or 'server' in text_lower or 'const' in text_lower or 'function' in text_lower:
-            doc_type = "Code/Technical Document"
-            icon = "💻"
-        elif 'resume' in text_lower or 'cv' in text_lower or 'experience' in text_lower:
-            doc_type = "Resume/CV"
-            icon = "📄"
-        elif 'report' in text_lower or 'analysis' in text_lower:
-            doc_type = "Report"
-            icon = "📊"
-        else:
-            doc_type = "Document"
-            icon = "📄"
+        doc_type, icon = DocumentHandler.detect_document_type(text, filename)
         
         # Get key sentences
         sentences = re.split(r'[.!?\n]+', text)
@@ -115,11 +140,18 @@ class DocumentHandler:
         
         summary += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         
-        # Helpful tips
+        # Helpful tips based on document type
         summary += "**💡 You can ask me:**\n"
-        summary += "• 'Explain this document in simple terms'\n"
-        summary += "• 'What are the key points?'\n"
-        summary += "• 'Tell me about a specific section'\n"
+        if doc_type == "Resume/CV":
+            summary += "• 'What is this person's name?'\n• 'What are their skills?'\n• 'Where are they located?'\n"
+        elif doc_type == "Code File":
+            summary += "• 'What does this code do?'\n• 'Explain how this works'\n• 'What language is this?'\n"
+        elif doc_type == "Meeting Notes":
+            summary += "• 'What were the key decisions?'\n• 'What are the action items?'\n• 'Who attended?'\n"
+        elif doc_type == "Legal Document":
+            summary += "• 'What are the key terms?'\n• 'What are the obligations?'\n• 'What are the important dates?'\n"
+        else:
+            summary += "• 'Explain this document in simple terms'\n• 'What are the key points?'\n• 'Tell me about a specific section'\n"
         
         return summary
     
@@ -129,15 +161,7 @@ class DocumentHandler:
         text = re.sub(r'\s+', ' ', text)
         text = text.strip()
         
-        text_lower = text.lower()
-        if 'contract' in text_lower or 'agreement' in text_lower:
-            icon, doc_type = "⚖️", "Legal Document"
-        elif 'http' in text_lower or 'server' in text_lower or 'const' in text_lower:
-            icon, doc_type = "💻", "Code File"
-        elif 'resume' in text_lower or 'cv' in text_lower:
-            icon, doc_type = "📄", "Resume/CV"
-        else:
-            icon, doc_type = "📄", "Document"
+        doc_type, icon = DocumentHandler.detect_document_type(text, filename)
         
         # Get key lines
         lines = [l.strip() for l in text.split('\n') if l.strip() and len(l.strip()) > 10][:8]
@@ -182,10 +206,10 @@ class DocumentHandler:
     def _call_jai_for_explanation(content, filename, question):
         """Use JAI to actually explain the document content"""
         try:
-            # Take a relevant portion of the document
+            # Take a relevant portion of the document (first 3000 chars)
             doc_excerpt = content[:3000] if len(content) > 3000 else content
             
-            # Build a prompt for JAI to explain
+            # Build a prompt for JAI to explain - generic for any document type
             prompt = f"""You are analyzing a document named "{filename}". 
 
 DOCUMENT CONTENT:
@@ -193,9 +217,13 @@ DOCUMENT CONTENT:
 
 USER QUESTION: {question}
 
-Please provide a clear, helpful, and informative answer based ONLY on the document content above. 
-- If the document contains personal information (name, location, skills), state them clearly
-- If the user asks for an explanation, explain in simple terms
+Please provide a clear, helpful, and informative answer based ONLY on the document content above.
+
+Guidelines:
+- Read and understand the document first
+- Answer the user's question directly
+- If asking for an explanation, explain in simple, clear terms
+- Extract and state specific information (names, dates, skills, decisions, code functions, etc.)
 - Be conversational and helpful
 - If the document doesn't contain the information, say so politely
 
@@ -248,11 +276,11 @@ Your response:"""
                 return DocumentHandler.generate_long_summary(content, filename)
         
         # ========== USE JAI TO ACTUALLY EXPLAIN ==========
-        # For questions like "explain", "tell me about", "what is", etc.
+        # For ANY question, let JAI provide an intelligent explanation
         if len(question_lower) > 2:
             ai_explanation = DocumentHandler._call_jai_for_explanation(content, filename, question)
             if ai_explanation and len(ai_explanation) > 10:
-                # Clean up the response - remove any "AI:" prefixes if present
+                # Clean up the response
                 ai_explanation = re.sub(r'^(AI:|Assistant:|Response:)\s*', '', ai_explanation)
                 return ai_explanation
         
