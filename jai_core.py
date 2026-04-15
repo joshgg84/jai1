@@ -1,10 +1,13 @@
 """JAI - Core Personality Module
 Main response generation orchestrating all services.
+Routes to Document Server, Casual Server, and Data Analyzer.
 """
 
 import random
 import re
 import logging
+import os
+import requests
 from datetime import datetime
 from jai_nlp import JAINLP
 from jai_casual import JAICasual
@@ -16,13 +19,74 @@ from jai_grammar import JAIGrammar
 from jai_grammar_long import JAIGrammarLong
 from jai_memory import JAIMemory
 from jai_services import WebSearch, Weather, Calculator, TimeService
-from jai_document import DocumentHandler
 from jai_professional_writer import ProfessionalWriterHandler
 from jai_creative_writer import CreativeWriterHandler
 from jai_user_handler import UserHandler
 from jai_formatter import TextFormatter
 
 logger = logging.getLogger(__name__)
+
+# Microservice URLs (set these as environment variables on Render)
+DOCUMENT_SERVER_URL = os.environ.get('DOCUMENT_SERVER_URL', 'https://jai-document.onrender.com')
+CASUAL_SERVER_URL = os.environ.get('CASUAL_SERVER_URL', 'https://jai-casual.onrender.com')
+DATA_ANALYZER_URL = os.environ.get('DATA_ANALYZER_URL', 'https://jai-data-analyzer.onrender.com')
+
+
+class MicroserviceClient:
+    """Handle communication with microservices"""
+    
+    @staticmethod
+    def call_document_server(endpoint, data, timeout=60):
+        """Call document intelligence server"""
+        try:
+            response = requests.post(
+                f"{DOCUMENT_SERVER_URL}{endpoint}",
+                json=data,
+                timeout=timeout
+            )
+            if response.status_code == 200:
+                return response.json()
+            return None
+        except Exception as e:
+            logger.error(f"Document server error: {e}")
+            return None
+    
+    @staticmethod
+    def call_casual_server(message, client_id, user_name=None):
+        """Call casual chat server"""
+        try:
+            response = requests.post(
+                f"{CASUAL_SERVER_URL}/api/casual",
+                json={
+                    'message': message,
+                    'clientId': client_id,
+                    'userName': user_name
+                },
+                timeout=10
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('response')
+            return None
+        except Exception as e:
+            logger.error(f"Casual server error: {e}")
+            return None
+    
+    @staticmethod
+    def call_data_analyzer(endpoint, data, timeout=60):
+        """Call data analyzer server"""
+        try:
+            response = requests.post(
+                f"{DATA_ANALYZER_URL}{endpoint}",
+                json=data,
+                timeout=timeout
+            )
+            if response.status_code == 200:
+                return response.json()
+            return None
+        except Exception as e:
+            logger.error(f"Data analyzer error: {e}")
+            return None
 
 
 class JAIPersonality:
@@ -36,13 +100,13 @@ class JAIPersonality:
         
         # ========== HANDLE FEATURE ENTRY (Page navigation) ==========
         if msg.startswith('entering '):
-            feature_name = message[9:].strip()  # Remove "entering " prefix
+            feature_name = message[9:].strip()
             JAIMemory.set_current_feature(client_id, feature_name)
             response = f"📱 Welcome to {feature_name}! How can I help you?"
             JAIMemory.save_conversation(client_id, original_message, response)
             return TextFormatter.format_all(response)
         
-        # ========== DOCUMENT UPLOAD COMMAND ==========
+        # ========== DOCUMENT UPLOAD COMMAND - Route to Document Server ==========
         if msg.startswith('upload_doc:'):
             try:
                 parts = message.split(':', 2)
@@ -50,38 +114,128 @@ class JAIPersonality:
                     filename = parts[1].strip()
                     base64_content = parts[2].strip()
                     
-                    text = DocumentHandler.extract_text_from_base64(base64_content, filename)
+                    # Call Document Server
+                    result = MicroserviceClient.call_document_server(
+                        '/api/upload',
+                        {
+                            'filename': filename,
+                            'content': base64_content,
+                            'clientId': client_id
+                        },
+                        timeout=60
+                    )
                     
-                    if text and len(text.strip()) > 10:
-                        simplified = DocumentHandler.simplify_document(text, filename)
-                        DocumentHandler.store_document(client_id, filename, text, simplified)
-                        long_summary = DocumentHandler.generate_long_summary(text, filename)
+                    if result and result.get('success'):
                         JAIMemory.save_conversation(client_id, original_message, f"Document uploaded: {filename}")
-                        response = f"✅ **Document uploaded successfully!**\n\n{long_summary}"
+                        response = f"✅ **Document uploaded successfully!**\n\n{result.get('summary', '')}"
                         return TextFormatter.format_all(response)
                     else:
-                        return "❌ File appears empty or unreadable. Please check the file and try again."
+                        error = result.get('error', 'Upload failed') if result else 'Document server unavailable'
+                        return f"❌ {error}"
                 else:
                     return "❌ Invalid upload format. Please use the upload button."
             except Exception as e:
                 logger.error(f"Document upload error: {e}")
                 return f"❌ Error: {str(e)}"
         
-        # ========== DOCUMENT INTELLIGENCE (HIGHEST PRIORITY FOR DOCUMENT QUESTIONS) ==========
-        # This MUST come before User Handler to prevent "explain" from being treated as location
-        if DocumentHandler.has_document(client_id):
-            doc = DocumentHandler.get_user_document(client_id)
-            if doc:
-                doc_answer = DocumentHandler.answer_question(client_id, original_message)
-                if doc_answer:
-                    JAIMemory.save_conversation(client_id, original_message, doc_answer)
-                    return TextFormatter.format_all(doc_answer)
+        # ========== DOCUMENT INTELLIGENCE - Route to Document Server ==========
+        current_feature = JAIMemory.get_current_feature(client_id)
+        if current_feature and 'Document Intelligence' in current_feature:
+            # Check if document is loaded on server
+            result = MicroserviceClient.call_document_server(
+                '/api/ask',
+                {
+                    'clientId': client_id,
+                    'question': original_message
+                },
+                timeout=30
+            )
+            if result and result.get('answer'):
+                JAIMemory.save_conversation(client_id, original_message, result['answer'])
+                return TextFormatter.format_all(result['answer'])
         
-        # ========== USER HANDLER (Name, Emotions, Memory) - LOWER PRIORITY ==========
-        user_response = UserHandler.handle_user_message(original_message, client_id)
-        if user_response:
-            JAIMemory.save_conversation(client_id, original_message, user_response)
-            return TextFormatter.format_all(user_response)
+        # ========== DATA ANALYSIS - Route to Data Analyzer ==========
+        if current_feature and 'Data Analyzer' in current_feature or msg.startswith('analyze data:'):
+            result = MicroserviceClient.call_data_analyzer(
+                '/api/analyze',
+                {
+                    'clientId': client_id,
+                    'question': original_message
+                },
+                timeout=30
+            )
+            if result and result.get('answer'):
+                JAIMemory.save_conversation(client_id, original_message, result['answer'])
+                return TextFormatter.format_all(result['answer'])
+        
+        # ========== GET USER MEMORY FACTS ==========
+        user_facts = JAIMemory.get_user_facts(client_id)
+        user_name = user_facts.get("name", None)
+        
+        # ========== CASUAL RESPONSES - Route to Casual Server ==========
+        # Check if this is a casual message (not a command or question)
+        is_casual = not any([
+            msg.startswith('upload_'),
+            '?' in msg,
+            any(word in msg for word in ['what', 'who', 'where', 'when', 'why', 'how', 'explain', 'summarize', 'convert', 'weather', 'time', 'date']),
+            any(word in msg for word in ['write', 'create', 'generate', 'make', 'draft']),
+            any(word in msg for word in ['my name is', 'i am', 'i\'m'])
+        ])
+        
+        if is_casual and len(msg) < 50:
+            casual_response = MicroserviceClient.call_casual_server(original_message, client_id, user_name)
+            if casual_response:
+                JAIMemory.save_conversation(client_id, original_message, casual_response)
+                return TextFormatter.format_all(casual_response)
+        
+        # ========== NAME EXTRACTION ==========
+        name_extraction_patterns = [
+            r'my name is\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)',
+            r'i am\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)',
+            r'i\'m\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)',
+            r'call me\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)',
+            r'name is\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)'
+        ]
+        
+        invalid_names = [
+            'yes', 'no', 'ok', 'okay', 'good', 'bad', 'fine', 'great', 'awesome',
+            'hello', 'hi', 'hey', 'bye', 'thanks', 'thank', 'please', 'sorry',
+            'confused', 'tired', 'happy', 'sad', 'angry', 'excited', 'bored',
+            'explain', 'summarize', 'describe', 'tell', 'show', 'give'
+        ]
+        
+        for pattern in name_extraction_patterns:
+            name_match = re.search(pattern, msg, re.IGNORECASE)
+            if name_match:
+                extracted_name = name_match.group(1).strip().title()
+                if (extracted_name.isalpha() and 
+                    len(extracted_name) >= 2 and 
+                    extracted_name.lower() not in invalid_names):
+                    JAIMemory.save_user_fact(client_id, 'name', extracted_name)
+                    user_name = extracted_name
+                    response = f"Nice to meet you, {extracted_name}! 😊 I'll remember your name."
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return TextFormatter.format_all(response)
+        
+        # ========== NAME QUESTION DETECTION ==========
+        name_question_patterns = [
+            r'what(\'s| is)? my name',
+            r'do you know my name',
+            r'remember my name',
+            r'who am i',
+            r'what do you call me'
+        ]
+        
+        for pattern in name_question_patterns:
+            if re.search(pattern, msg):
+                if user_name:
+                    response = f"Your name is {user_name}! 😊 I remember you."
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return TextFormatter.format_all(response)
+                else:
+                    response = "I don't know your name yet. Please tell me: 'My name is [your name]' and I'll remember it! 😊"
+                    JAIMemory.save_conversation(client_id, original_message, response)
+                    return TextFormatter.format_all(response)
         
         # ========== CREATIVE WRITER ==========
         if CreativeWriterHandler.is_creative_request(original_message):
@@ -135,17 +289,6 @@ class JAIPersonality:
             JAIMemory.save_conversation(client_id, original_message, date_response)
             return TextFormatter.format_all(date_response)
         
-        # ========== LEARNED RESPONSES ==========
-        taught_response = JAIMemory.get_taught_response(client_id, original_message)
-        if taught_response:
-            JAIMemory.save_conversation(client_id, original_message, taught_response)
-            return TextFormatter.format_all(taught_response)
-        
-        next_time_response = JAIMemory.get_next_time_say_response(client_id, original_message)
-        if next_time_response:
-            JAIMemory.save_conversation(client_id, original_message, next_time_response)
-            return TextFormatter.format_all(next_time_response)
-        
         # ========== CHECK FOR GENERAL KNOWLEDGE QUESTIONS ==========
         clean_msg = msg.strip()
         clean_msg = re.sub(r'\?{3,}', '?', clean_msg)
@@ -189,32 +332,11 @@ class JAIPersonality:
                 JAIMemory.save_conversation(client_id, original_message, search_result)
                 return TextFormatter.format_all(search_result)
         
-        # ========== CASUAL RESPONSES ==========
-        user_facts = JAIMemory.get_user_facts(client_id)
-        user_name = user_facts.get("name", None)
+        # ========== LOCAL CASUAL FALLBACK (if microservice fails) ==========
         casual_response = JAICasual.get_casual_response(original_message, user_name)
         if casual_response:
             JAIMemory.save_conversation(client_id, original_message, casual_response)
             return TextFormatter.format_all(casual_response)
-        
-        # ========== LEARNING PATTERNS ==========
-        next_time_pattern = re.search(r'next time .+? say[s]? ["\']?(.+?)["\']?\s+(?:say|respond with) ["\']?(.+?)["\']?', msg, re.IGNORECASE)
-        if next_time_pattern:
-            trigger = next_time_pattern.group(1).strip()
-            response = next_time_pattern.group(2).strip()
-            JAIMemory.learn_next_time_say(client_id, trigger, response)
-            result = f"📚 Got it! When someone says '{trigger}', I'll respond with '{response}'"
-            JAIMemory.save_conversation(client_id, original_message, result)
-            return TextFormatter.format_all(result)
-        
-        teach_pattern = re.search(r'teach ["\']?(.+?)["\']?\s*->\s*["\']?(.+?)["\']?', msg, re.IGNORECASE)
-        if teach_pattern:
-            trigger = teach_pattern.group(1).strip()
-            response = teach_pattern.group(2).strip()
-            JAIMemory.teach_response(client_id, trigger, response)
-            result = f"✅ Learned! '{trigger}' -> '{response}'"
-            JAIMemory.save_conversation(client_id, original_message, result)
-            return TextFormatter.format_all(result)
         
         # ========== INTENT & NATURAL ==========
         intent = JAINLP.extract_intent(original_message)
@@ -233,15 +355,7 @@ class JAIPersonality:
             JAIMemory.save_conversation(client_id, original_message, conv)
             return TextFormatter.format_all(conv)
         
-        # ========== PROFESSIONAL WRITER FALLBACK ==========
-        if any(w in msg for w in ['write', 'draft', 'compose', 'email', 'letter', 'proposal']):
-            response = ProfessionalWriterHandler.get_writing_help()
-            JAIMemory.save_conversation(client_id, original_message, response)
-            return TextFormatter.format_all(response)
-        
         # ========== DEFAULT FALLBACK ==========
-        user_facts = JAIMemory.get_user_facts(client_id)
-        user_name = user_facts.get("name", None)
         fallbacks = [
             "That's interesting. Tell me more!",
             "I hear you. What else is on your mind?",
