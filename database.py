@@ -43,7 +43,7 @@ class APIKeyDatabase:
                 'monthly_requests': 0,
                 'last_reset': datetime.now().isoformat(),
                 'feature_usage': {},
-                'last_requests': []
+                'request_timestamps': []  # Track timestamps for rate limiting
             },
             'active': True
         }
@@ -71,29 +71,45 @@ class APIKeyDatabase:
             key_data['usage']['daily_requests'] = 0
             key_data['usage']['last_reset'] = now.isoformat()
         
-        # Check limits
+        # Check daily limit
         limits = key_data['limits']
-        
         if limits.get('daily') and key_data['usage']['daily_requests'] >= limits['daily']:
             return {'error': f"Daily limit of {limits['daily']} exceeded"}
         
+        # Check rate per minute limit
         if limits.get('rate_per_minute'):
+            # Clean old timestamps (older than 1 minute)
             minute_ago = now - timedelta(minutes=1)
-            key_data['usage']['last_requests'] = [
-                ts for ts in key_data['usage']['last_requests']
+            key_data['usage']['request_timestamps'] = [
+                ts for ts in key_data['usage']['request_timestamps']
                 if datetime.fromisoformat(ts) > minute_ago
             ]
-            if len(key_data['usage']['last_requests']) >= limits['rate_per_minute']:
-                return {'error': f"Rate limit of {limits['rate_per_minute']} per minute exceeded"}
+            
+            # Check if rate limit exceeded
+            if len(key_data['usage']['request_timestamps']) >= limits['rate_per_minute']:
+                oldest = min(key_data['usage']['request_timestamps']) if key_data['usage']['request_timestamps'] else now.isoformat()
+                wait_seconds = 60 - (now - datetime.fromisoformat(oldest)).seconds
+                return {'error': f"Rate limit of {limits['rate_per_minute']} requests per minute exceeded. Wait {wait_seconds} seconds."}
         
         return {'valid': True, 'key_data': key_data}
     
     def increment_usage(self, api_key: str):
         if api_key in self.keys:
+            now = datetime.now()
             self.keys[api_key]['usage']['total_requests'] += 1
             self.keys[api_key]['usage']['daily_requests'] += 1
             self.keys[api_key]['usage']['monthly_requests'] += 1
-            self.keys[api_key]['usage']['last_requests'].append(datetime.now().isoformat())
+            
+            # Add timestamp for rate limiting
+            self.keys[api_key]['usage']['request_timestamps'].append(now.isoformat())
+            
+            # Keep only last 2 minutes of timestamps to save memory
+            two_min_ago = now - timedelta(minutes=2)
+            self.keys[api_key]['usage']['request_timestamps'] = [
+                ts for ts in self.keys[api_key]['usage']['request_timestamps']
+                if datetime.fromisoformat(ts) > two_min_ago
+            ]
+            
             self.save()
     
     def revoke_key(self, api_key: str) -> bool:
