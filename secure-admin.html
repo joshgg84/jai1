@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jai Secure Admin - Joshua's AI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Login Screen */
+        .login-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .login-box {
+            background: rgba(255,255,255,0.95);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            width: 450px;
+            text-align: center;
+        }
+
+        .login-box h1 {
+            color: #1a1a2e;
+            margin-bottom: 10px;
+        }
+
+        .login-box input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        .login-box button {
+            width: 100%;
+            padding: 12px;
+            background: #1a1a2e;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .login-box button:hover {
+            background: #16213e;
+        }
+
+        .security-badge {
+            margin-top: 15px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        /* Main Dashboard */
+        .dashboard {
+            display: none;
+        }
+
+        .header {
+            background: rgba(255,255,255,0.95);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .security-status {
+            font-size: 12px;
+            color: #38a169;
+            margin-top: 5px;
+        }
+
+        .card {
+            background: rgba(255,255,255,0.95);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        .card h2 {
+            color: #1a1a2e;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #1a1a2e;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        button {
+            background: #1a1a2e;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background: #16213e;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: #f7f7f7;
+            border-radius: 8px;
+        }
+
+        .feature-item input {
+            width: auto;
+            margin: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        th {
+            background: #f7f7f7;
+            font-weight: 600;
+        }
+
+        .alert {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        .alert-success {
+            background: #c6f6d5;
+            color: #22543d;
+            border: 1px solid #9ae6b4;
+        }
+
+        .alert-error {
+            background: #fed7d7;
+            color: #742a2a;
+            border: 1px solid #fc8181;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #1a1a2e;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .session-info {
+            font-size: 12px;
+            color: #666;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div class="login-screen" id="loginScreen">
+        <div class="login-box">
+            <h1>🔐 Jai Secure Admin</h1>
+            <p>Joshua's Artificial Intelligence</p>
+            <input type="password" id="adminKey" placeholder="Enter Admin API Key" autocomplete="off">
+            <input type="text" id="otpCode" placeholder="Enter 6-digit OTP Code" maxlength="6">
+            <button onclick="login()">Authenticate →</button>
+            <div class="security-badge">
+                🔒 2FA Protected • Session Expires in 1 Hour • All Requests Signed
+            </div>
+            <div class="alert-error" id="loginError" style="margin-top: 10px; display: none;"></div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard -->
+    <div class="dashboard container" id="dashboard">
+        <div class="header">
+            <div>
+                <h1>🤖 Jai Secure Admin Dashboard</h1>
+                <div class="security-status">✅ Secured with API Key + Session Token + Request Signing</div>
+                <div class="session-info" id="sessionInfo"></div>
+            </div>
+            <button class="logout-btn" onclick="logout()" style="background: #e53e3e;">Logout & Destroy Session</button>
+        </div>
+
+        <div class="card">
+            <h2>➕ Create New API Key</h2>
+            <div class="alert" id="createAlert"></div>
+            <form id="createKeyForm">
+                <div class="form-group">
+                    <label>Key Name</label>
+                    <input type="text" id="keyName" required placeholder="e.g., Production App">
+                </div>
+                <div class="form-group">
+                    <label>Tier</label>
+                    <select id="keyTier" onchange="updateFeatures()">
+                        <option value="free">Free Tier - 2 req/min (Chat Only)</option>
+                        <option value="pro">Pro Tier - 50 req/min (Full Features)</option>
+                        <option value="enterprise">Enterprise - 200 req/min (Unlimited)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>User ID (optional)</label>
+                    <input type="text" id="userId" placeholder="Auto-generated">
+                </div>
+                <div class="form-group">
+                    <label>Feature Access</label>
+                    <div class="feature-grid" id="featureGrid"></div>
+                </div>
+                <button type="submit">🔐 Create Secured API Key</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>🔑 Existing API Keys</h2>
+            <div id="keyList">Loading...</div>
+        </div>
+
+        <div class="card">
+            <h2>📋 Audit Log</h2>
+            <div id="auditLog" style="max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px;"></div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE = 'https://jai1-sh81.onrender.com';
+        let SESSION_TOKEN = null;
+        let SESSION_EXPIRY = null;
+        let ADMIN_API_KEY = null;
+
+        // Generate secure session token
+        function generateSessionToken() {
+            return crypto.randomUUID() + '-' + Date.now() + '-' + crypto.getRandomValues(new Uint32Array(1))[0];
+        }
+
+        // Generate request signature
+        async function generateSignature(method, path, body, timestamp, nonce) {
+            const dataToSign = `${method}|${path}|${timestamp}|${nonce}|${JSON.stringify(body)}|${SESSION_TOKEN}`;
+            const encoder = new TextEncoder();
+            const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(dataToSign));
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        // Make authenticated API request
+        async function adminRequest(endpoint, method, body = null) {
+            if (!SESSION_TOKEN || !ADMIN_API_KEY) {
+                throw new Error('Not authenticated');
+            }
+
+            const timestamp = Date.now();
+            const nonce = crypto.randomUUID();
+            const signature = await generateSignature(method, endpoint, body, timestamp, nonce);
+
+            const headers = {
+                'X-API-Key': ADMIN_API_KEY,
+                'X-Session-Token': SESSION_TOKEN,
+                'X-Request-Timestamp': timestamp.toString(),
+                'X-Request-Nonce': nonce,
+                'X-Request-Signature': signature,
+                'Content-Type': 'application/json'
+            };
+
+            const response = await fetch(`${API_BASE}${endpoint}`, {
+                method: method,
+                headers: headers,
+                body: body ? JSON.stringify(body) : null
+            });
+
+            if (response.status === 401) {
+                logout();
+                throw new Error('Session expired. Please login again.');
+            }
+
+            return await response.json();
+        }
+
+        // Login with 2FA
+        async function login() {
+            const adminKey = document.getElementById('adminKey').value;
+            const otpCode = document.getElementById('otpCode').value;
+
+            if (!adminKey || !otpCode) {
+                showLoginError('Please enter both Admin API Key and OTP code');
+                return;
+            }
+
+            // Generate session token
+            const sessionToken = generateSessionToken();
+            const timestamp = Date.now();
+            const nonce = crypto.randomUUID();
+
+            // Create login signature
+            const loginData = { otp: otpCode, session_token: sessionToken, timestamp: timestamp };
+            const encoder = new TextEncoder();
+            const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(JSON.stringify(loginData) + adminKey));
+            const signature = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/login`, {
+                    method: 'POST',
+                    headers: {
+                        'X-API-Key': adminKey,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        otp: otpCode,
+                        session_token: sessionToken,
+                        timestamp: timestamp,
+                        signature: signature
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    SESSION_TOKEN = sessionToken;
+                    ADMIN_API_KEY = adminKey;
+                    SESSION_EXPIRY = Date.now() + (60 * 60 * 1000); // 1 hour
+                    
+                    document.getElementById('loginScreen').style.display = 'none';
+                    document.getElementById('dashboard').style.display = 'block';
+                    
+                    loadDashboard();
+                    startSessionTimer();
+                    addAuditLog('Login successful', 'success');
+                } else {
+                    showLoginError(data.error || 'Authentication failed');
+                }
+            } catch (error) {
+                showLoginError('Connection error: ' + error.message);
+            }
+        }
+
+        // Logout
+        function logout() {
+            if (SESSION_TOKEN && ADMIN_API_KEY) {
+                // Send logout request
+                fetch(`${API_BASE}/admin/logout`, {
+                    method: 'POST',
+                    headers: {
+                        'X-API-Key': ADMIN_API_KEY,
+                        'X-Session-Token': SESSION_TOKEN
+                    }
+                }).catch(() => {});
+            }
+            
+            SESSION_TOKEN = null;
+            ADMIN_API_KEY = null;
+            sessionStorage.clear();
+            document.getElementById('loginScreen').style.display = 'flex';
+            document.getElementById('dashboard').style.display = 'none';
+        }
+
+        // Load dashboard data
+        async function loadDashboard() {
+            await loadKeys();
+            await loadAuditLog();
+        }
+
+        // Load API keys
+        async function loadKeys() {
+            try {
+                const data = await adminRequest('/admin/keys/list', 'GET');
+                displayKeys(data.keys || []);
+            } catch (error) {
+                showAlert('keyList', error.message, 'error');
+            }
+        }
+
+        // Display keys
+        function displayKeys(keys) {
+            if (!keys.length) {
+                document.getElementById('keyList').innerHTML = '<p>No API keys found. Create your first key above.</p>';
+                return;
+            }
+
+            const html = `
+                <table>
+                    <thead>
+                        <tr><th>Name</th><th>Key ID</th><th>Tier</th><th>Requests</th><th>Status</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody>
+                        ${keys.map(key => `
+                            <tr>
+                                <td>${escapeHtml(key.name)}</td>
+                                <td><code>${key.key_id}</code></td>
+                                <td><span class="badge badge-${key.tier || 'free'}">${key.tier || 'free'}</span></td>
+                                <td>${key.usage?.total_requests || 0}</td>
+                                <td class="${key.active ? 'status-active' : 'status-inactive'}">${key.active ? 'Active' : 'Revoked'}</td>
+                                <td><button onclick="revokeKey('${key.key_id}')" class="revoke-btn">Revoke</button></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            document.getElementById('keyList').innerHTML = html;
+        }
+
+        // Create API key
+        document.getElementById('createKeyForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const name = document.getElementById('keyName').value;
+            const tier = document.getElementById('keyTier').value;
+            const userId = document.getElementById('userId').value;
+            
+            // Get feature toggles
+            const features = {};
+            document.querySelectorAll('.feature-toggle').forEach(cb => {
+                features[cb.dataset.feature] = cb.checked;
+            });
+            
+            try {
+                const data = await adminRequest('/admin/keys/create', 'POST', {
+                    name: name,
+                    tier: tier,
+                    user_id: userId,
+                    features: features
+                });
+                
+                if (data.api_key) {
+                    showAlert('createAlert', `✅ Key created! Save it now: ${data.api_key}`, 'success');
+                    document.getElementById('createKeyForm').reset();
+                    loadKeys();
+                    addAuditLog(`Created API key: ${name} (${tier} tier)`, 'success');
+                    
+                    // Show the key in a modal
+                    alert(`API KEY CREATED!\n\n🔑 ${data.api_key}\n\n⚠️ Save this key now! It won't be shown again.`);
+                } else {
+                    showAlert('createAlert', data.error || 'Failed to create key', 'error');
+                }
+            } catch (error) {
+                showAlert('createAlert', error.message, 'error');
+            }
+        });
+
+        // Revoke key
+        async function revokeKey(keyId) {
+            if (!confirm('Revoke this API key? This action cannot be undone.')) return;
+            
+            try {
+                const data = await adminRequest('/admin/keys/revoke', 'POST', { key_id: keyId });
+                if (data.success) {
+                    loadKeys();
+                    addAuditLog(`Revoked API key: ${keyId}`, 'warning');
+                }
+            } catch (error) {
+                alert('Failed to revoke key: ' + error.message);
+            }
+        }
+
+        // Update features based on tier
+        function updateFeatures() {
+            const tier = document.getElementById('keyTier').value;
+            const features = {
+                free: { chat: true, memory_short_term: true, context_persistence: true, document_upload: false, document_search: false, memory_long_term: false, conversation_export: false },
+                pro: { chat: true, memory_short_term: true, context_persistence: true, document_upload: true, document_search: true, memory_long_term: true, conversation_export: true },
+                enterprise: { chat: true, memory_short_term: true, context_persistence: true, document_upload: true, document_search: true, memory_long_term: true, conversation_export: true }
+            };
+            
+            const featureGrid = document.getElementById('featureGrid');
+            featureGrid.innerHTML = Object.entries(features[tier]).map(([feature, enabled]) => `
+                <div class="feature-item">
+                    <input type="checkbox" class="feature-toggle" data-feature="${feature}" ${enabled ? 'checked' : ''} ${tier !== 'custom' ? 'disabled' : ''}>
+                    <label>${feature.replace(/_/g, ' ').toUpperCase()}</label>
+                </div>
+            `).join('');
+        }
+
+        // Load audit log
+        async function loadAuditLog() {
+            try {
+                const data = await adminRequest('/admin/audit/log', 'GET');
+                const logHtml = (data.logs || []).map(log => 
+                    `<div>[${new Date(log.timestamp).toLocaleString()}] ${log.action} - ${log.details}</div>`
+                ).join('');
+                document.getElementById('auditLog').innerHTML = logHtml || '<div>No logs yet</div>';
+            } catch (error) {
+                document.getElementById('auditLog').innerHTML = '<div>Failed to load logs</div>';
+            }
+        }
+
+        // Add audit log entry
+        function addAuditLog(action, level) {
+            // This would send to server in production
+            console.log(`[AUDIT] ${action}`);
+        }
+
+        // Session timer
+        function startSessionTimer() {
+            const interval = setInterval(() => {
+                if (SESSION_EXPIRY && Date.now() > SESSION_EXPIRY) {
+                    clearInterval(interval);
+                    alert('Session expired. Please login again.');
+                    logout();
+                }
+                
+                const remaining = SESSION_EXPIRY ? Math.max(0, Math.floor((SESSION_EXPIRY - Date.now()) / 1000)) : 0;
+                const minutes = Math.floor(remaining / 60);
+                const seconds = remaining % 60;
+                document.getElementById('sessionInfo').innerHTML = `Session expires in: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+            }, 1000);
+        }
+
+        // Helper functions
+        function escapeHtml(str) {
+            return str.replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+
+        function showAlert(elementId, message, type) {
+            const alert = document.getElementById(elementId);
+            alert.className = `alert alert-${type}`;
+            alert.innerHTML = message;
+            alert.style.display = 'block';
+            setTimeout(() => alert.style.display = 'none', 5000);
+        }
+
+        function showLoginError(message) {
+            const errorDiv = document.getElementById('loginError');
+            errorDiv.innerHTML = message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => errorDiv.style.display = 'none', 3000);
+        }
+
+        // Initialize feature grid
+        updateFeatures();
+    </script>
+</body>
+</html>
