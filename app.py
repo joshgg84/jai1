@@ -1,11 +1,22 @@
 from flask import Flask, request, jsonify
 from functools import wraps
 import os
+import secrets
+import hashlib
 from datetime import datetime
 from database import APIKeyDatabase
 
 app = Flask(__name__)
 db = APIKeyDatabase()
+
+# ============= CONFIGURATION =============
+# Admin API key from environment variable (REQUIRED)
+ADMIN_API_KEY = os.getenv('JAI_ADMIN_KEY')
+if not ADMIN_API_KEY:
+    print("\n❌ ERROR: JAI_ADMIN_KEY environment variable not set!")
+    print("Set it in Render dashboard: Environment Variables -> JAI_ADMIN_KEY")
+    print("Example: jai_admin_32chars_long_secret_key_here\n")
+    exit(1)
 
 # ============= TIER DEFINITIONS =============
 TIERS = {
@@ -17,8 +28,7 @@ TIERS = {
             'document_upload': {'enabled': False},
             'document_search': {'enabled': False},
             'memory_long_term': {'enabled': False}
-        },
-        'description': '2 requests per minute, chat only'
+        }
     },
     'pro': {
         'name': 'Pro Tier',
@@ -28,19 +38,7 @@ TIERS = {
             'document_upload': {'enabled': True},
             'document_search': {'enabled': True},
             'memory_long_term': {'enabled': True}
-        },
-        'description': 'Full features'
-    },
-    'enterprise': {
-        'name': 'Enterprise Tier',
-        'limits': {'daily': None, 'rate_per_minute': 200, 'is_admin': False},
-        'features': {
-            'chat': {'enabled': True},
-            'document_upload': {'enabled': True},
-            'document_search': {'enabled': True},
-            'memory_long_term': {'enabled': True}
-        },
-        'description': 'Unlimited'
+        }
     },
     'admin': {
         'name': 'Admin',
@@ -50,42 +48,81 @@ TIERS = {
             'document_upload': {'enabled': True},
             'document_search': {'enabled': True},
             'memory_long_term': {'enabled': True}
-        },
-        'description': 'Admin access'
+        }
     }
 }
 
-# ============= AUTHENTICATION =============
-def require_api_key(f):
-    @wraps(f)
+# ============= SECURE AUTHENTICATION =============
+
+def require_api_key(func):
+    @wraps(func)
     def decorated(*args, **kwargs):
         api_key = request.headers.get('X-API-Key')
         if not api_key:
             return jsonify({'error': 'Missing API key'}), 401
         
         validation = db.validate_key(api_key)
-        if 'error' in validation:
-            return jsonify({'error': validation['error']}), 429
+        if not validation or 'error' in validation:
+            return jsonify({'error': validation.get('error', 'Invalid API key')}), 401
         
         request.key_data = validation['key_data']
         request.api_key = api_key
         db.increment_usage(api_key)
-        return f(*args, **kwargs)
+        return func(*args, **kwargs)
     return decorated
 
-def require_feature(feature):
-    def decorator(f):
-        @wraps(f)
+def require_admin(func):
+    @wraps(func)
+    def decorated(*args, **kwargs):
+        api_key = request.headers.get('X-API-Key')
+        
+        # Check if the key matches the admin key from env var
+        if not api_key or api_key != ADMIN_API_KEY:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        request.admin_key = api_key
+        return func(*args, **kwargs)
+    return decorated
+
+def require_feature(feature_name):
+    def decorator(func):
+        @wraps(func)
         def decorated(*args, **kwargs):
             api_key = request.headers.get('X-API-Key')
-            if not db.has_feature_access(api_key, feature):
-                return jsonify({'error': f'Feature {feature} not available in your tier', 
-                              'upgrade_message': 'Upgrade to access this feature'}), 403
-            return f(*args, **kwargs)
+            if not db.has_feature_access(api_key, feature_name):
+                return jsonify({
+                    'error': f'Feature "{feature_name}" not available in your tier',
+                    'upgrade_required': True
+                }), 403
+            return func(*args, **kwargs)
         return decorated
     return decorator
 
+# ============= INITIAL ADMIN KEY SETUP =============
+
+def setup_admin_key():
+    """Check if admin key exists in DB, create if not"""
+    # Check if admin key already exists in database
+    admin_exists = False
+    for key, data in db.keys.items():
+        if key == ADMIN_API_KEY:
+            admin_exists = True
+            break
+    
+    # If not in DB, add it
+    if not admin_exists:
+        db.create_key(
+            name="Master Admin",
+            limits=TIERS['admin']['limits'],
+            features=TIERS['admin']['features'],
+            user_id="admin"
+        )
+        print(f"✅ Admin key initialized in database")
+    else:
+        print(f"✅ Admin key found in database")
+
 # ============= PUBLIC ENDPOINTS =============
+
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'healthy', 'version': '2.0.0'})
@@ -97,38 +134,40 @@ def chat():
     data = request.json
     message = data.get('message', '')
     
-    # Simple response based on tier
-    tier = 'free' if request.key_data['limits'].get('rate_per_minute') == 2 else 'pro'
-    
-    response = f"Jai (Joshua's AI) - {TIERS[tier]['name']} says: I heard '{message}'"
+    # Determine tier from rate limit
+    rate_limit = request.key_data['limits'].get('rate_per_minute', 0)
+    tier_names = {2: 'free', 50: 'pro', 500: 'admin'}
+    tier = tier_names.get(rate_limit, 'custom')
     
     return jsonify({
-        'reply': response,
+        'reply': f"Jai (Joshua's AI) says: '{message}'",
         'tier': tier,
-        'rate_limit': f"{request.key_data['limits'].get('rate_per_minute', 'unlimited')} req/min"
+        'rate_limit': f"{rate_limit} req/min" if rate_limit else 'unlimited'
     })
 
 @app.route('/api/document/upload', methods=['POST'])
 @require_api_key
 @require_feature('document_upload')
 def upload_document():
-    return jsonify({'message': 'Document uploaded', 'status': 'success'})
+    data = request.json
+    return jsonify({
+        'message': 'Document uploaded',
+        'filename': data.get('filename'),
+        'status': 'success'
+    })
 
 @app.route('/api/document/search', methods=['POST'])
 @require_api_key
 @require_feature('document_search')
 def search_document():
-    return jsonify({'message': 'Document search results', 'results': []})
+    return jsonify({'message': 'Search results', 'results': []})
 
-# ============= ADMIN ENDPOINTS =============
+# ============= SECURE ADMIN ENDPOINTS =============
+
 @app.route('/admin/keys/create', methods=['POST'])
+@require_admin
 def admin_create_key():
-    api_key = request.headers.get('X-API-Key')
-    key_info = db.get_key_info(api_key)
-    
-    if not key_info or not key_info.get('limits', {}).get('is_admin', False):
-        return jsonify({'error': 'Admin privileges required'}), 403
-    
+    """Create a new API key - ADMIN ONLY"""
     data = request.json
     tier = data.get('tier', 'free')
     
@@ -147,32 +186,55 @@ def admin_create_key():
         'success': True,
         'api_key': new_key['api_key'],
         'key_id': new_key['key_id'],
-        'tier': tier,
-        'description': tier_config['description']
+        'tier': tier
     })
 
-@app.route('/admin/keys/list', methods=['GET'])
-def admin_list_keys():
-    api_key = request.headers.get('X-API-Key')
-    key_info = db.get_key_info(api_key)
-    
-    if not key_info or not key_info.get('limits', {}).get('is_admin', False):
-        return jsonify({'error': 'Admin privileges required'}), 403
-    
-    return jsonify({'keys': db.list_keys()})
-
 @app.route('/admin/keys/revoke', methods=['POST'])
+@require_admin
 def admin_revoke_key():
-    api_key = request.headers.get('X-API-Key')
-    key_info = db.get_key_info(api_key)
+    """Revoke an API key - ADMIN ONLY"""
+    data = request.json
+    api_key = data.get('api_key')
     
-    if not key_info or not key_info.get('limits', {}).get('is_admin', False):
-        return jsonify({'error': 'Admin privileges required'}), 403
+    if not api_key:
+        return jsonify({'error': 'api_key required'}), 400
     
-    key_to_revoke = request.json.get('api_key')
-    if db.revoke_key(key_to_revoke):
+    # Prevent revoking the master admin key
+    if api_key == ADMIN_API_KEY:
+        return jsonify({'error': 'Cannot revoke master admin key'}), 403
+    
+    if db.revoke_key(api_key):
         return jsonify({'success': True})
     return jsonify({'error': 'Key not found'}), 404
+
+@app.route('/admin/keys/list', methods=['GET'])
+@require_admin
+def admin_list_keys():
+    """List all keys (without showing the actual keys) - ADMIN ONLY"""
+    keys = db.list_keys()
+    # Remove sensitive data
+    for key in keys:
+        key.pop('api_key', None)
+    return jsonify({'keys': keys, 'total': len(keys)})
+
+@app.route('/admin/stats', methods=['GET'])
+@require_admin
+def admin_stats():
+    """Get system stats - ADMIN ONLY"""
+    keys = db.list_keys()
+    total_requests = sum(k['usage']['total_requests'] for k in keys)
+    active_keys = sum(1 for k in keys if k['active'])
+    
+    return jsonify({
+        'total_keys': len(keys),
+        'active_keys': active_keys,
+        'total_requests': total_requests,
+        'tiers': {
+            'free': sum(1 for k in keys if k['limits'].get('rate_per_minute') == 2),
+            'pro': sum(1 for k in keys if k['limits'].get('rate_per_minute') == 50),
+            'admin': sum(1 for k in keys if k['limits'].get('is_admin'))
+        }
+    })
 
 @app.route('/')
 def index():
@@ -180,25 +242,23 @@ def index():
         'name': 'Jai - Joshua\'s Artificial Intelligence',
         'version': '2.0.0',
         'auth_required': True,
-        'tiers': ['free (2 req/min)', 'pro', 'enterprise', 'admin']
+        'endpoints': {
+            'public': ['/health'],
+            'protected': ['/api/chat', '/api/document/upload', '/api/document/search'],
+            'admin': ['/admin/keys/create', '/admin/keys/revoke', '/admin/keys/list', '/admin/stats']
+        }
     })
 
 if __name__ == '__main__':
-    # Create default admin key if none exists
-    admin_keys = [k for k, v in db.keys.items() if v.get('limits', {}).get('is_admin')]
+    # Setup admin key from environment variable
+    setup_admin_key()
     
-    if not admin_keys:
-        admin_key = db.create_key(
-            name="Master Admin",
-            limits=TIERS['admin']['limits'],
-            features=TIERS['admin']['features'],
-            user_id="admin"
-        )
-        print("\n" + "="*60)
-        print("🔑 ADMIN API KEY (SAVE THIS!)")
-        print("="*60)
-        print(f"API Key: {admin_key['api_key']}")
-        print("="*60 + "\n")
+    print("\n" + "="*60)
+    print("🤖 JAI SERVER STARTING")
+    print("="*60)
+    print(f"Admin Key: {ADMIN_API_KEY[:20]}... (from env variable)")
+    print(f"Database: {DB_FILE}")
+    print("="*60 + "\n")
     
     port = int(os.environ.get('PORT', 8000))
     app.run(host='0.0.0.0', port=port)
